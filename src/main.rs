@@ -1,10 +1,10 @@
 use std::{env, path::Path};
 
-use crate::keyvalue::KeyValues;
-
-mod keyvalue;
+use screwdriver::keyvalue::KeyValues;
 
 fn main() {
-    let path = &env::args().collect::<Vec<String>>()[1];
-    println!("{:#?}", KeyValues::parse(Path::new(path)));
+    let args = &env::args().collect::<Vec<String>>();
+    let kv = KeyValues::parse(Path::new(&args[1])).unwrap();
+    // println!("{:#?}", kv);
+    kv.write(Path::new(&args[2])).unwrap();
 }

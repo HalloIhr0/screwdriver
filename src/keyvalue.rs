@@ -1,10 +1,10 @@
-use std::{fs, iter::Peekable, path::Path, str::Chars};
+use std::{fs, io, iter::Peekable, path::Path, str::Chars};
 use thiserror::Error;
 
 /// Parser for the KeyValues format
 /// https://developer.valvesoftware.com/wiki/KeyValues
 /// Conditionl statements don't work (for now)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum KeyValues {
     Value { value: String },
     List { subkeys: Vec<(String, KeyValues)> },
@@ -121,6 +121,36 @@ impl KeyValues {
         }
         Ok(Self::List { subkeys: current })
     }
+
+    pub fn write(&self, file: &Path) -> Result<(), io::Error> {
+        let content = match self {
+            KeyValues::Value { .. } => panic!("Tried to write KeyValues::Value. Should only be KeyValues::List. Something went wrong!"),
+            KeyValues::List { subkeys } => {subkeys.iter().map(|(name, value)| value.get_string(name, 1)).collect::<Vec<String>>().join("\n")},
+        };
+
+        fs::write(file, content)
+    }
+
+    fn get_string(&self, name: &str, indent: u16) -> String {
+        // You shouldn't have more than 2^16 levels of indentation. This is fine
+        let indent_str = String::from(" ").repeat((indent * 4) as usize);
+        let name = escape_token(name);
+        match self {
+            KeyValues::Value { value } => {
+                format!("{indent_str}\"{name}\" \"{}\"", escape_token(value))
+            }
+            KeyValues::List { subkeys } => {
+                format!(
+                    "{indent_str}\"{name}\"\n{indent_str}{{\n{}\n{indent_str}}}",
+                    subkeys
+                        .iter()
+                        .map(|(name, value)| value.get_string(name, indent + 1))
+                        .collect::<Vec<String>>()
+                        .join("\n")
+                )
+            }
+        }
+    }
 }
 
 fn skip_whitespace(content: &mut Peekable<Chars>) {
@@ -183,6 +213,14 @@ fn read_text(content: &mut Peekable<Chars>) -> Result<String, KeyValuesError> {
         }
     }
     Ok(text)
+}
+
+fn escape_token(token: &str) -> String {
+    token
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+        .replace('\"', "\\\"")
 }
 
 #[cfg(test)]
@@ -264,5 +302,12 @@ mod tests {
             let mut iter = "\"Hello World".chars().peekable();
             assert_eq!(read_text(&mut iter), Err(KeyValuesError::UnexpectedEnd));
         }
+    }
+    #[test]
+    fn test_escape_token() {
+        assert_eq!(
+            escape_token(&"Hello\nWorld\tHello\\World\"Hello".to_string()),
+            "Hello\\nWorld\\tHello\\\\World\\\"Hello"
+        )
     }
 }
