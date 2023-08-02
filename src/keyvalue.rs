@@ -25,6 +25,8 @@ pub enum KeyValuesError {
 }
 
 impl KeyValues {
+    /// Reads a file and parses it into KeyValues
+    /// Errors if the file has invalid syntax
     pub fn parse(file: &Path) -> Result<Self, KeyValuesError> {
         let content = fs::read_to_string(file)
             .map_err(|_| KeyValuesError::InvalidFile(file.to_string_lossy().to_string()))?;
@@ -122,10 +124,50 @@ impl KeyValues {
         Ok(Self::List { subkeys: current })
     }
 
+    /// Gets the first value with the specified name
+    /// Return None if the name does not exist
+    /// Only works on KeyValues::List
+    pub fn get(&self, name: &str) -> Option<&Self> {
+        match self {
+            KeyValues::Value { .. } => None,
+            KeyValues::List { subkeys } => {
+                for (key_name, value) in subkeys {
+                    if key_name == name {
+                        return Some(value);
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Gets every value with the specified name
+    /// Only works on KeyValues::List
+    pub fn get_all(&self, name: &str) -> Vec<&Self> {
+        match self {
+            KeyValues::Value { .. } => vec![],
+            KeyValues::List { subkeys } => subkeys
+                .iter()
+                .filter_map(|(key_name, value)| if key_name == name { Some(value) } else { None })
+                .collect(),
+        }
+    }
+
+    /// Gets the actual value with the specified name
+    /// Only works on KeyValues::Value
+    pub fn get_value(&self) -> Option<&String> {
+        match self {
+            KeyValues::Value { value } => Some(value),
+            KeyValues::List { .. } => None,
+        }
+    }
+
+    /// Writes KeyValues into a file with the right syntax
+    /// Errors if writing fails
     pub fn write(&self, file: &Path) -> Result<(), io::Error> {
         let content = match self {
             KeyValues::Value { .. } => panic!("Tried to write KeyValues::Value. Should only be KeyValues::List. Something went wrong!"),
-            KeyValues::List { subkeys } => {subkeys.iter().map(|(name, value)| value.get_string(name, 1)).collect::<Vec<String>>().join("\n")},
+            KeyValues::List { subkeys } => {subkeys.iter().map(|(name, value)| value.get_string(name, 0)).collect::<Vec<String>>().join("\n")},
         };
 
         fs::write(file, content)
