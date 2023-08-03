@@ -1,21 +1,20 @@
-use glow::*;
 use imgui::Context;
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
-use std::{env, path::Path};
+// use std::{env, path::Path};
 
 use screwdriver::keyvalue::KeyValues;
 
 mod renderer;
 
 fn main() {
-    let args = &env::args().collect::<Vec<String>>();
-    let kv = KeyValues::parse(Path::new(&args[1])).unwrap();
-    test_get(&kv).unwrap();
-    kv.write(Path::new(&args[2])).unwrap();
+    // let args = &env::args().collect::<Vec<String>>();
+    // let kv = KeyValues::parse(Path::new(&args[1])).unwrap();
+    // test_get(&kv).unwrap();
+    // kv.write(Path::new(&args[2])).unwrap();
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -45,6 +44,34 @@ fn main() {
     let mut imgui_renderer = AutoRenderer::initialize(gl, &mut imgui).unwrap();
     let gl = imgui_renderer.gl_context().clone();
 
+    let renderer = renderer::Renderer::create(gl);
+    let mut triangle = renderer::VertexData::create(&renderer).unwrap();
+    triangle
+        .add_data(
+            &[-0.75, -0.75, 0.75, -0.75, 0.0, 0.75],
+            renderer::VertexSize::VEC2,
+            0,
+        )
+        .unwrap();
+
+    let shader = renderer::Shader::create(
+        &renderer,
+        r#"#version 330 core
+        layout (location=0) in vec2 pos;
+        out vec3 color;
+        void main() {
+            color = vec3(pos, 0.0);
+            gl_Position = vec4(pos, 0.0, 1.0);
+        }"#,
+        r#"#version 330 core
+        in vec3 color;
+        out vec4 out_color;
+        void main() {
+            out_color = vec4(color, 1.0);
+        }"#,
+    )
+    .unwrap();
+
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main_loop: loop {
         for event in event_pump.poll_iter() {
@@ -58,7 +85,7 @@ fn main() {
                 } => break 'main_loop,
                 Event::Window { win_event, .. } => match win_event {
                     WindowEvent::Resized(width, height) => {
-                        unsafe { gl.viewport(0, 0, width, height) };
+                        renderer.viewport(width, height);
                     }
                     _ => {}
                 },
@@ -72,10 +99,11 @@ fn main() {
 
         let draw_data = imgui.render();
 
-        unsafe {
-            gl.clear(COLOR_BUFFER_BIT);
-            gl.clear_color(0.27, 0.27, 0.27, 1.0);
-        }
+        renderer.clear_color_buffer();
+        renderer.clear_depth_buffer();
+        renderer.fill(0.27, 0.27, 0.27, 1.0);
+
+        renderer.draw(&triangle, &shader);
 
         imgui_renderer.render(draw_data).unwrap();
 

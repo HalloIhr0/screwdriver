@@ -36,6 +36,10 @@ impl Shader {
             Ok(Self { context, program })
         }
     }
+
+    pub(super) fn bind(&self) {
+        unsafe { self.context.use_program(Some(self.program)) };
+    }
 }
 
 impl Drop for Shader {

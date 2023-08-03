@@ -1,14 +1,42 @@
+use glow::{Context, HasContext};
 use std::rc::Rc;
-use glow::Context;
 
 mod shader;
 pub use shader::Shader;
+mod vertex_data;
+pub use vertex_data::{VertexData, VertexSize};
 
 pub struct Renderer {
-    context: Rc<Context>
+    context: Rc<Context>,
 }
 
 impl Renderer {
+    pub fn create(context: Rc<Context>) -> Self {
+        Self { context }
+    }
+
+    pub fn viewport(&self, width: i32, height: i32) {
+        unsafe { self.context.viewport(0, 0, width, height) };
+    }
+
+    pub fn clear_color_buffer(&self) {
+        unsafe { self.context.clear(glow::COLOR_BUFFER_BIT) };
+    }
+
+    pub fn clear_depth_buffer(&self) {
+        unsafe { self.context.clear(glow::DEPTH_BUFFER_BIT) };
+    }
+
+    pub fn fill(&self, r: f32, g: f32, b: f32, a: f32) {
+        unsafe { self.context.clear_color(r, g, b, a) };
+    }
+
+    pub fn draw(&self, data: &VertexData, shader: &Shader) {
+        let count = data.prepare_rendering();
+        shader.bind();
+        unsafe { self.context.draw_arrays(glow::TRIANGLES, 0, count) };
+    }
+
     fn get_context(&self) -> Rc<Context> {
         self.context.clone()
     }

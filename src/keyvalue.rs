@@ -129,7 +129,10 @@ impl KeyValues {
     /// Only works on KeyValues::List
     pub fn get(&self, name: &str) -> Option<&Self> {
         match self {
-            KeyValues::Value { .. } => None,
+            KeyValues::Value { .. } => {
+                eprintln!("Tried to get element from KeyValues::Value");
+                None
+            }
             KeyValues::List { subkeys } => {
                 for (key_name, value) in subkeys {
                     if key_name == name {
@@ -145,7 +148,10 @@ impl KeyValues {
     /// Only works on KeyValues::List
     pub fn get_all(&self, name: &str) -> Vec<&Self> {
         match self {
-            KeyValues::Value { .. } => vec![],
+            KeyValues::Value { .. } => {
+                eprintln!("Tried to get elements from KeyValues::Value");
+                vec![]
+            }
             KeyValues::List { subkeys } => subkeys
                 .iter()
                 .filter_map(|(key_name, value)| if key_name == name { Some(value) } else { None })
@@ -158,7 +164,10 @@ impl KeyValues {
     pub fn get_value(&self) -> Option<&String> {
         match self {
             KeyValues::Value { value } => Some(value),
-            KeyValues::List { .. } => None,
+            KeyValues::List { .. } => {
+                eprintln!("Tried to get value from KeyValues::List");
+                None
+            }
         }
     }
 
@@ -166,8 +175,15 @@ impl KeyValues {
     /// Errors if writing fails
     pub fn write(&self, file: &Path) -> Result<(), io::Error> {
         let content = match self {
-            KeyValues::Value { .. } => panic!("Tried to write KeyValues::Value. Should only be KeyValues::List. Something went wrong!"),
-            KeyValues::List { subkeys } => {subkeys.iter().map(|(name, value)| value.get_string(name, 0)).collect::<Vec<String>>().join("\n")},
+            KeyValues::Value { .. } => {
+                eprintln!("Tried to write KeyValues::Value. Should only be KeyValues::List. Something went wrong!");
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+            KeyValues::List { subkeys } => subkeys
+                .iter()
+                .map(|(name, value)| value.get_string(name, 0))
+                .collect::<Vec<String>>()
+                .join("\n"),
         };
 
         fs::write(file, content)
