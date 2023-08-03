@@ -9,6 +9,8 @@ use std::{env, path::Path};
 
 use screwdriver::keyvalue::KeyValues;
 
+mod renderer;
+
 fn main() {
     let args = &env::args().collect::<Vec<String>>();
     let kv = KeyValues::parse(Path::new(&args[1])).unwrap();
