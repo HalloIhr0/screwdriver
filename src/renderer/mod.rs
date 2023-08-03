@@ -12,6 +12,10 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn create(context: Rc<Context>) -> Self {
+        unsafe {
+            context.cull_face(glow::BACK);
+            context.front_face(glow::CCW);
+        }
         Self { context }
     }
 
@@ -35,6 +39,28 @@ impl Renderer {
         let count = data.prepare_rendering();
         shader.bind();
         unsafe { self.context.draw_arrays(glow::TRIANGLES, 0, count) };
+    }
+
+    pub fn enable_depth_test(&self, enable: bool) {
+        match enable {
+            true => unsafe {
+                self.context.enable(glow::DEPTH_TEST);
+            },
+            false => unsafe {
+                self.context.disable(glow::DEPTH_TEST);
+            },
+        }
+    }
+
+    pub fn enable_backface_culling(&self, enable: bool) {
+        match enable {
+            true => unsafe {
+                self.context.enable(glow::CULL_FACE);
+            },
+            false => unsafe {
+                self.context.disable(glow::CULL_FACE);
+            },
+        }
     }
 
     fn get_context(&self) -> Rc<Context> {

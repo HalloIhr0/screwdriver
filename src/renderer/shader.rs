@@ -1,12 +1,14 @@
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
-use glow::{Context, HasContext, NativeProgram, NativeShader};
+use glow::{Context, HasContext, NativeProgram, NativeShader, NativeUniformLocation};
+use nalgebra_glm as glm;
 
 use super::Renderer;
 
 pub struct Shader {
     context: Rc<Context>,
     program: NativeProgram,
+    uniform_cache: HashMap<String, NativeUniformLocation>,
 }
 
 impl Shader {
@@ -33,12 +35,45 @@ impl Shader {
             context.delete_shader(vertex);
             context.delete_shader(fragment);
 
-            Ok(Self { context, program })
+            Ok(Self {
+                context,
+                program,
+                uniform_cache: HashMap::new(),
+            })
+        }
+    }
+
+    pub fn set_uniform_mat3(&mut self, name: &str, value: &glm::Mat3) {
+        let location = self.get_uniform_location(name);
+        unsafe {
+            self.context
+                .uniform_matrix_3_f32_slice(location.as_ref(), false, glm::value_ptr(value))
+        }
+    }
+
+    pub fn set_uniform_mat4(&mut self, name: &str, value: &glm::Mat4) {
+        let location = self.get_uniform_location(name);
+        unsafe {
+            self.context
+                .uniform_matrix_4_f32_slice(location.as_ref(), false, glm::value_ptr(value))
         }
     }
 
     pub(super) fn bind(&self) {
         unsafe { self.context.use_program(Some(self.program)) };
+    }
+
+    fn get_uniform_location(&mut self, name: &str) -> Option<NativeUniformLocation> {
+        if let Some(location) = self.uniform_cache.get(name) {
+            return Some(*location);
+        }
+        let location = unsafe { self.context.get_uniform_location(self.program, name) };
+        if let Some(location) = location {
+            self.uniform_cache.insert(name.to_string(), location);
+        } else {
+            eprintln!("Uniform location \"{}\" not found", name);
+        }
+        location
     }
 }
 
