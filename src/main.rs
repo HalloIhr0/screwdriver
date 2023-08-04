@@ -2,12 +2,15 @@ use imgui::Context;
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
 use nalgebra_glm as glm;
+use renderer::{Renderer, VertexData};
+use screwdriver::math::Polyhedron;
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 // use std::{env, path::Path};
 
 use screwdriver::keyvalue::KeyValues;
+use screwdriver::math;
 
 mod renderer;
 
@@ -126,6 +129,7 @@ fn main() {
     let mut y_pos = -1.0;
     let mut z_pos = -3.0;
     let mut rotation = 30.0;
+    let mut cut_angle = 0.0;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main_loop: loop {
@@ -156,6 +160,30 @@ fn main() {
             ui.slider("Y", -5.0, 5.0, &mut y_pos);
             ui.slider("Z", -5.0, 5.0, &mut z_pos);
             ui.slider("Rotation", -180.0, 180.0, &mut rotation);
+            if ui.slider("Cut Angle", -180.0, 180.0, &mut cut_angle) {
+                let mut poly = Polyhedron {
+                    vertices: vec![
+                        glm::vec3(-1.0, -1.0, 1.0),
+                        glm::vec3(-1.0, 1.0, 1.0),
+                        glm::vec3(-1.0, -1.0, -1.0),
+                        glm::vec3(-1.0, 1.0, -1.0),
+                        glm::vec3(1.0, -1.0, 1.0),
+                        glm::vec3(1.0, 1.0, 1.0),
+                        glm::vec3(1.0, -1.0, -1.0),
+                        glm::vec3(1.0, 1.0, -1.0),
+                    ],
+                    faces: vec![
+                        vec![0, 1, 3, 2],
+                        vec![2, 3, 7, 6],
+                        vec![6, 7, 5, 4],
+                        vec![4, 5, 1, 0],
+                        vec![2, 6, 4, 0],
+                        vec![7, 3, 1, 5],
+                    ],
+                };
+                math::clip_polyhedron_to_plane(&mut poly, &glm::vec3(0.0, 0.0, 0.0), &glm::vec3(f32::cos(f32::to_radians(cut_angle)), f32::sin(f32::to_radians(cut_angle)), 0.0));
+                cube = vertexdata_from_polyhedron(&renderer, &poly);
+            };
         });
 
         let draw_data = imgui.render();
@@ -185,6 +213,26 @@ fn main() {
 
         window.gl_swap_window();
     }
+}
+
+fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &Polyhedron) -> VertexData{
+    let mut positions = vec![];
+    let mut normals = vec![];
+    for face in &polyhedron.faces {
+        let normal = glm::normalize(&glm::cross(&(polyhedron.vertices[face[1]]-polyhedron.vertices[face[0]]), &(polyhedron.vertices[face[2]]-polyhedron.vertices[face[0]])));
+        for i in 2..face.len() {
+            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[0]]));
+            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i-1]]));
+            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i]]));
+            normals.extend_from_slice(glm::value_ptr(&normal));
+            normals.extend_from_slice(glm::value_ptr(&normal));
+            normals.extend_from_slice(glm::value_ptr(&normal));
+        }
+    }
+    let mut result = renderer::VertexData::create(&renderer).unwrap();
+    result.add_data(&positions, renderer::VertexSize::VEC3, 0).unwrap();
+    result.add_data(&normals, renderer::VertexSize::VEC3, 1).unwrap();
+    result
 }
 
 fn test_get(kv: &KeyValues) -> Option<()> {
