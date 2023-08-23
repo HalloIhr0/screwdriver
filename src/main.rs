@@ -3,8 +3,7 @@ use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
 use nalgebra_glm as glm;
 use renderer::{Renderer, VertexData};
-use screwdriver::math::Polyhedron;
-use screwdriver::vmf::VMF;
+use screwdriver::vmf::{BrushShape, VMF};
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -49,10 +48,7 @@ fn main() {
 
     let mut vertex_data = vec![];
     for brush in vmf.worldbrushes {
-        vertex_data.push(vertexdata_from_polyhedron(
-            &renderer,
-            &brush.get_polyhedron(),
-        ));
+        vertex_data.push(vertexdata_from_polyhedron(&renderer, &brush.shape));
     }
 
     let mut shader = renderer::Shader::create(
@@ -175,10 +171,10 @@ fn main() {
     }
 }
 
-fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &Polyhedron) -> VertexData {
+fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &BrushShape) -> VertexData {
     let mut positions = vec![];
     let mut normals = vec![];
-    for face in &polyhedron.faces {
+    for (info, face) in &polyhedron.faces {
         let normal = glm::normalize(&glm::cross(
             &(polyhedron.vertices[face[1]] - polyhedron.vertices[face[0]]),
             &(polyhedron.vertices[face[2]] - polyhedron.vertices[face[0]]),

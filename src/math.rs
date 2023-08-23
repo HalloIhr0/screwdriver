@@ -31,14 +31,15 @@ pub fn line_segment_plane_intersection(
     line_plane_intersection(line.0, &(line.1 - line.0), plane_point, plane_normal)
 }
 
-pub fn clip_polyhedron_to_plane(
-    polyhedron: &mut Polyhedron,
+pub fn clip_polyhedron_to_plane<T: Clone>(
+    polyhedron: &mut Polyhedron<T>,
     plane_point: &glm::Vec3,
     plane_normal: &glm::Vec3,
+    new_face_info: T,
 ) {
-    let mut new_faces = vec![];
+    let mut new_faces: Vec<(T, Vec<usize>)> = vec![];
     let mut new_face_edges = HashMap::new();
-    for face in &polyhedron.faces {
+    for (info, face) in &polyhedron.faces {
         let mut sides = vec![];
         for vertex in face {
             sides.push(f32::signum(glm::dot(
@@ -51,7 +52,7 @@ pub fn clip_polyhedron_to_plane(
             continue;
         } else if !sides.contains(&1.0) {
             // All behind plane, can just be kept
-            new_faces.push(face.clone());
+            new_faces.push((info.clone(), face.clone()));
             continue;
         }
         let mut iter = sides.iter().enumerate().cycle();
@@ -126,7 +127,7 @@ pub fn clip_polyhedron_to_plane(
         new_face_edges.insert(new_vertex_one, new_vertex_two);
         inside_vertices.push_front(new_vertex_one);
         inside_vertices.push_front(new_vertex_two);
-        new_faces.push(inside_vertices.into())
+        new_faces.push((info.clone(), inside_vertices.into()));
     }
     if !new_face_edges.is_empty() {
         let start = *new_face_edges
@@ -140,48 +141,15 @@ pub fn clip_polyhedron_to_plane(
             current = new_face_edges[&current];
         }
         assert_eq!(new_face_edges.len(), edge_loop.len());
-        new_faces.push(edge_loop);
+        new_faces.push((new_face_info, edge_loop));
     }
     polyhedron.faces = new_faces
 }
 
-// pub fn clip_polyhedron_to_plane(
-//     polyhedron: &mut Polyhedron,
-//     plane_point: &glm::Vec3,
-//     plane_normal: &glm::Vec3,
-// ) {
-//     for (i, pos) in polyhedron.vertices.iter().enumerate() {
-//         if f32::signum(glm::dot(&(pos - plane_point), plane_normal)) == 1.0 {
-//             // Point is in front of the plane, shout be clipped away
-//             let mut connected_edges = HashMap::new();
-//             for face in &polyhedron.faces {
-//                 if let Some(index) = face.iter().position(|&x| x == i) {
-//                     connected_edges.insert(
-//                         (index + 1) % face.len(),
-//                         if index == 0 {
-//                             face.len() - 1
-//                         } else {
-//                             index - 1
-//                         },
-//                     );
-//                 }
-//             }
-//             let start = *connected_edges.keys().next().expect("Invalid polyhedron: Unconnected vertex");
-//             let mut edge_loop = vec![start];
-//             let mut current = connected_edges[&start];
-//             while current != start {
-//                 edge_loop.push(current);
-//                 current = connected_edges[&current];
-//             }
-
-//         }
-//     }
-//     ()
-// }
-
-pub struct Polyhedron {
+#[derive(Debug)]
+pub struct Polyhedron<T> {
     pub vertices: Vec<glm::Vec3>,
-    pub faces: Vec<Vec<usize>>,
+    pub faces: Vec<(T, Vec<usize>)>,
 }
 
 #[cfg(test)]

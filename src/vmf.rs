@@ -26,12 +26,14 @@ impl VMF {
     }
 }
 
+pub type BrushShape = Polyhedron<Option<Face>>;
+
 /// Represents a Brush
 /// In the VMF, this is called a "solid"
 #[derive(Debug)]
 pub struct Brush {
     id: i32,
-    faces: Vec<Face>,
+    pub shape: BrushShape,
 }
 
 impl Brush {
@@ -42,46 +44,15 @@ impl Brush {
         }
         Some(Self {
             id: kv.get("id")?.get_value()?.parse().ok()?,
-            faces,
+            shape: get_polyhedron(faces),
         })
-    }
-
-    pub fn get_polyhedron(&self) -> Polyhedron {
-        let mut poly = Polyhedron {
-            vertices: vec![
-                glm::vec3(-MAX_MAP_EXTENT, -MAX_MAP_EXTENT, MAX_MAP_EXTENT),
-                glm::vec3(-MAX_MAP_EXTENT, MAX_MAP_EXTENT, MAX_MAP_EXTENT),
-                glm::vec3(-MAX_MAP_EXTENT, -MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
-                glm::vec3(-MAX_MAP_EXTENT, MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
-                glm::vec3(MAX_MAP_EXTENT, -MAX_MAP_EXTENT, MAX_MAP_EXTENT),
-                glm::vec3(MAX_MAP_EXTENT, MAX_MAP_EXTENT, MAX_MAP_EXTENT),
-                glm::vec3(MAX_MAP_EXTENT, -MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
-                glm::vec3(MAX_MAP_EXTENT, MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
-            ],
-            faces: vec![
-                vec![0, 1, 3, 2],
-                vec![2, 3, 7, 6],
-                vec![6, 7, 5, 4],
-                vec![4, 5, 1, 0],
-                vec![2, 6, 4, 0],
-                vec![7, 3, 1, 5],
-            ],
-        };
-        for face in &self.faces {
-            let normal = glm::normalize(&glm::cross(
-                &(face.plane.2 - face.plane.0),
-                &(face.plane.1 - face.plane.0),
-            ));
-            math::clip_polyhedron_to_plane(&mut poly, &face.plane.0, &normal);
-        }
-        poly
     }
 }
 
 /// Represents a Face of a Brush
 /// In the VMF, this is called a "side"
-#[derive(Debug)]
-struct Face {
+#[derive(Debug, Clone)]
+pub struct Face {
     id: i32,
     plane: (glm::Vec3, glm::Vec3, glm::Vec3),
     material: String,
@@ -139,7 +110,7 @@ impl Face {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct UVAxis {
     x: f32,
     y: f32,
@@ -164,4 +135,35 @@ impl UVAxis {
             scaling,
         })
     }
+}
+
+fn get_polyhedron(faces: Vec<Face>) -> BrushShape {
+    let mut poly = Polyhedron {
+        vertices: vec![
+            glm::vec3(-MAX_MAP_EXTENT, -MAX_MAP_EXTENT, MAX_MAP_EXTENT),
+            glm::vec3(-MAX_MAP_EXTENT, MAX_MAP_EXTENT, MAX_MAP_EXTENT),
+            glm::vec3(-MAX_MAP_EXTENT, -MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
+            glm::vec3(-MAX_MAP_EXTENT, MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
+            glm::vec3(MAX_MAP_EXTENT, -MAX_MAP_EXTENT, MAX_MAP_EXTENT),
+            glm::vec3(MAX_MAP_EXTENT, MAX_MAP_EXTENT, MAX_MAP_EXTENT),
+            glm::vec3(MAX_MAP_EXTENT, -MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
+            glm::vec3(MAX_MAP_EXTENT, MAX_MAP_EXTENT, -MAX_MAP_EXTENT),
+        ],
+        faces: vec![
+            (None, vec![0, 1, 3, 2]),
+            (None, vec![2, 3, 7, 6]),
+            (None, vec![6, 7, 5, 4]),
+            (None, vec![4, 5, 1, 0]),
+            (None, vec![2, 6, 4, 0]),
+            (None, vec![7, 3, 1, 5]),
+        ],
+    };
+    for face in faces {
+        let normal = glm::normalize(&glm::cross(
+            &(face.plane.2 - face.plane.0),
+            &(face.plane.1 - face.plane.0),
+        ));
+        math::clip_polyhedron_to_plane(&mut poly, &face.plane.0, &normal, Some(face.clone()));
+    }
+    poly
 }
