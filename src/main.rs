@@ -4,21 +4,18 @@ use imgui_sdl2_support::SdlPlatform;
 use nalgebra_glm as glm;
 use renderer::{Renderer, VertexData};
 use screwdriver::math::Polyhedron;
+use screwdriver::vmf::VMF;
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
-// use std::{env, path::Path};
-
-use screwdriver::keyvalue::KeyValues;
-use screwdriver::math;
+use std::f32::consts::PI;
+use std::{env, path::Path};
 
 mod renderer;
 
 fn main() {
-    // let args = &env::args().collect::<Vec<String>>();
-    // let kv = KeyValues::parse(Path::new(&args[1])).unwrap();
-    // test_get(&kv).unwrap();
-    // kv.write(Path::new(&args[2])).unwrap();
+    let args = &env::args().collect::<Vec<String>>();
+    let vmf = VMF::parse(Path::new(&args[1])).unwrap();
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -49,49 +46,14 @@ fn main() {
     let gl = imgui_renderer.gl_context().clone();
 
     let renderer = renderer::Renderer::create(gl);
-    let mut cube = renderer::VertexData::create(&renderer).unwrap();
-    cube.add_data(
-        //Postions
-        &[
-            -1.000000, 1.000000, 1.000000, -1.000000, -1.000000, -1.000000, -1.000000, -1.000000,
-            1.000000, -1.000000, 1.000000, -1.000000, 1.000000, -1.000000, -1.000000, -1.000000,
-            -1.000000, -1.000000, 1.000000, 1.000000, -1.000000, 1.000000, -1.000000, 1.000000,
-            1.000000, -1.000000, -1.000000, 1.000000, 1.000000, 1.000000, -1.000000, -1.000000,
-            1.000000, 1.000000, -1.000000, 1.000000, 1.000000, -1.000000, -1.000000, -1.000000,
-            -1.000000, 1.000000, -1.000000, -1.000000, -1.000000, -1.000000, 1.000000, -1.000000,
-            1.000000, 1.000000, 1.000000, 1.000000, 1.000000, -1.000000, -1.000000, 1.000000,
-            1.000000, -1.000000, 1.000000, -1.000000, -1.000000, -1.000000, -1.000000, -1.000000,
-            1.000000, -1.000000, 1.000000, 1.000000, -1.000000, 1.000000, -1.000000, -1.000000,
-            1.000000, 1.000000, -1.000000, 1.000000, 1.000000, 1.000000, 1.000000, -1.000000,
-            1.000000, 1.000000, 1.000000, 1.000000, -1.000000, 1.000000, 1.000000, -1.000000,
-            -1.000000, 1.000000, 1.000000, -1.000000, -1.000000, 1.000000, -1.000000, 1.000000,
-            -1.000000, -1.000000, 1.000000, -1.000000, 1.000000, -1.000000, -1.000000, 1.000000,
-            1.000000, 1.000000, 1.000000, 1.000000,
-        ],
-        renderer::VertexSize::VEC3,
-        0,
-    )
-    .unwrap();
 
-    cube.add_data(
-        &[
-            // Normals
-            -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, 0.0000,
-            0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 1.0000, 0.0000,
-            0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-            0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000,
-            0.0000, 0.0000, -1.0000, 0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-            0.0000, 1.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000,
-            0.0000, 0.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000,
-            -1.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000, 0.0000,
-            0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-            -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, -1.0000, 0.0000, 0.0000, 1.0000,
-            0.0000, 0.0000, 1.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-        ],
-        renderer::VertexSize::VEC3,
-        1,
-    )
-    .unwrap();
+    let mut vertex_data = vec![];
+    for brush in vmf.worldbrushes {
+        vertex_data.push(vertexdata_from_polyhedron(
+            &renderer,
+            &brush.get_polyhedron(),
+        ));
+    }
 
     let mut shader = renderer::Shader::create(
         &renderer,
@@ -101,14 +63,15 @@ fn main() {
         out vec3 color;
         out float light;
         uniform mat4 transform;
+        uniform mat4 view;
         uniform mat4 projection;
         uniform mat3 normal_transform;
         void main() {
             vec3 view_dir = vec3(0, 0, 1);
-            light = clamp(dot(normalize(normal_transform * normal), view_dir), 0.2, 1.0);
+            light = clamp(dot(normalize(normal_transform * normal), view_dir), 0.0, 1.0)*0.8 + 0.2;
             //light = clamp(dot(normal, view_dir), 0.2, 1.0);
             color = pos;
-            gl_Position = projection*transform*vec4(pos, 1.0);
+            gl_Position = projection*(view*(transform*vec4(pos, 1.0)));
         }"#,
         r#"#version 330 core
         in vec3 color;
@@ -121,27 +84,49 @@ fn main() {
     )
     .unwrap();
 
-    let proj = glm::perspective::<f32>(1280.0 / 720.0, f32::to_radians(45.0), 0.1, 100.0);
+    let proj = glm::perspective::<f32>(1280.0 / 720.0, f32::to_radians(45.0), 1.0, 16384.0);
     renderer.enable_depth_test(true);
     renderer.enable_backface_culling(true);
 
-    let mut x_pos = 0.0;
-    let mut y_pos = -1.0;
-    let mut z_pos = -3.0;
-    let mut rotation = 30.0;
-    let mut cut_angle = 0.0;
+    let mut camera_pos = glm::vec3(0.0, 0.0, 0.0);
+    let mut camera_pitch: f32 = 0.0;
+    let mut camera_yaw: f32 = 0.0;
+
+    let camera_speed = 64.0;
+    let camera_rotate_speed = 0.1;
+    let camera_up = glm::vec3(0.0, 0.0, 1.0);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main_loop: loop {
+        camera_pitch = camera_pitch.clamp(-PI / 2.0 + 0.01, PI / 2.0 - 0.01);
+        // Camera code adapted from https://learnopengl.com/Getting-started/Camera
+        let mut direction = glm::vec3(0.0, 0.0, 0.0);
+        direction.x = f32::cos(camera_yaw) * f32::cos(camera_pitch);
+        direction.y = f32::sin(camera_yaw) * f32::cos(camera_pitch);
+        direction.z = f32::sin(camera_pitch);
+        let camera_front = glm::normalize(&direction);
+
+        let camera_right = glm::normalize(&glm::cross(&camera_front, &camera_up));
+
         for event in event_pump.poll_iter() {
             imgui_platform.handle_event(&mut imgui, &event);
 
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
+                Event::Quit { .. } => break 'main_loop,
+                Event::KeyDown {
+                    keycode: Some(keycode),
                     ..
-                } => break 'main_loop,
+                } => match keycode {
+                    Keycode::W => camera_pos += camera_speed * camera_front,
+                    Keycode::S => camera_pos -= camera_speed * camera_front,
+                    Keycode::A => camera_pos -= camera_speed * camera_right,
+                    Keycode::D => camera_pos += camera_speed * camera_right,
+                    Keycode::Up => camera_pitch += camera_rotate_speed,
+                    Keycode::Down => camera_pitch -= camera_rotate_speed,
+                    Keycode::Left => camera_yaw += camera_rotate_speed,
+                    Keycode::Right => camera_yaw -= camera_rotate_speed,
+                    _ => {}
+                },
                 Event::Window { win_event, .. } => match win_event {
                     WindowEvent::Resized(width, height) => {
                         renderer.viewport(width, height);
@@ -151,63 +136,38 @@ fn main() {
                 _ => {}
             }
         }
+
         imgui_platform.prepare_frame(&mut imgui, &window, &event_pump);
 
         let ui = imgui.new_frame();
         ui.show_metrics_window(&mut true);
-        ui.window("Cube mover 5000").build(|| {
-            ui.slider("X", -5.0, 5.0, &mut x_pos);
-            ui.slider("Y", -5.0, 5.0, &mut y_pos);
-            ui.slider("Z", -5.0, 5.0, &mut z_pos);
-            ui.slider("Rotation", -180.0, 180.0, &mut rotation);
-            if ui.slider("Cut Angle", -180.0, 180.0, &mut cut_angle) {
-                let mut poly = Polyhedron {
-                    vertices: vec![
-                        glm::vec3(-1.0, -1.0, 1.0),
-                        glm::vec3(-1.0, 1.0, 1.0),
-                        glm::vec3(-1.0, -1.0, -1.0),
-                        glm::vec3(-1.0, 1.0, -1.0),
-                        glm::vec3(1.0, -1.0, 1.0),
-                        glm::vec3(1.0, 1.0, 1.0),
-                        glm::vec3(1.0, -1.0, -1.0),
-                        glm::vec3(1.0, 1.0, -1.0),
-                    ],
-                    faces: vec![
-                        vec![0, 1, 3, 2],
-                        vec![2, 3, 7, 6],
-                        vec![6, 7, 5, 4],
-                        vec![4, 5, 1, 0],
-                        vec![2, 6, 4, 0],
-                        vec![7, 3, 1, 5],
-                    ],
-                };
-                math::clip_polyhedron_to_plane(&mut poly, &glm::vec3(0.0, 0.0, 0.0), &glm::vec3(f32::cos(f32::to_radians(cut_angle)), f32::sin(f32::to_radians(cut_angle)), 0.0));
-                cube = vertexdata_from_polyhedron(&renderer, &poly);
-            };
-        });
 
         let draw_data = imgui.render();
 
         let mut transform = glm::Mat4::identity();
-        transform = glm::translate(&transform, &glm::vec3(x_pos, y_pos, z_pos));
-        transform = glm::rotate(
-            &transform,
-            f32::to_radians(rotation),
-            &glm::vec3(0.0, 1.0, 0.0),
-        );
-        transform = glm::scale(&transform, &glm::vec3(0.5, 0.5, 0.5));
+        // transform = glm::translate(&transform, &glm::vec3(x_pos, y_pos, z_pos));
+        // transform = glm::rotate(
+        //     &transform,
+        //     f32::to_radians(rotation),
+        //     &glm::vec3(0.0, 1.0, 0.0),
+        // );
+        // transform = glm::scale(&transform, &glm::vec3(0.5, 0.5, 0.5));
+        let view = glm::look_at(&camera_pos, &(camera_pos + camera_front), &camera_up);
 
-        let normal_transform = glm::mat4_to_mat3(&glm::inverse(&transform).transpose());
+        let normal_transform = glm::mat4_to_mat3(&glm::inverse(&(view * transform)).transpose());
 
         renderer.clear_color_buffer();
         renderer.clear_depth_buffer();
-        renderer.fill(0.27, 0.27, 0.27, 1.0);
+        renderer.fill(0.27, 0.27, 0.5, 1.0);
 
         shader.set_uniform_mat4("projection", &proj);
+        shader.set_uniform_mat4("view", &view);
         shader.set_uniform_mat4("transform", &transform);
         shader.set_uniform_mat3("normal_transform", &normal_transform);
 
-        renderer.draw(&cube, &shader);
+        for brush in &vertex_data {
+            renderer.draw(brush, &shader);
+        }
 
         imgui_renderer.render(draw_data).unwrap();
 
@@ -215,28 +175,29 @@ fn main() {
     }
 }
 
-fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &Polyhedron) -> VertexData{
+fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &Polyhedron) -> VertexData {
     let mut positions = vec![];
     let mut normals = vec![];
     for face in &polyhedron.faces {
-        let normal = glm::normalize(&glm::cross(&(polyhedron.vertices[face[1]]-polyhedron.vertices[face[0]]), &(polyhedron.vertices[face[2]]-polyhedron.vertices[face[0]])));
+        let normal = glm::normalize(&glm::cross(
+            &(polyhedron.vertices[face[1]] - polyhedron.vertices[face[0]]),
+            &(polyhedron.vertices[face[2]] - polyhedron.vertices[face[0]]),
+        ));
         for i in 2..face.len() {
             positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[0]]));
-            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i-1]]));
+            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i - 1]]));
             positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i]]));
             normals.extend_from_slice(glm::value_ptr(&normal));
             normals.extend_from_slice(glm::value_ptr(&normal));
             normals.extend_from_slice(glm::value_ptr(&normal));
         }
     }
-    let mut result = renderer::VertexData::create(&renderer).unwrap();
-    result.add_data(&positions, renderer::VertexSize::VEC3, 0).unwrap();
-    result.add_data(&normals, renderer::VertexSize::VEC3, 1).unwrap();
+    let mut result = renderer::VertexData::create(renderer).unwrap();
     result
-}
-
-fn test_get(kv: &KeyValues) -> Option<()> {
-    println!("{}", kv.get("versioninfo")?.get("mapversion")?.get_value()?);
-    println!("{:#?}", kv.get("world")?.get_all("solid"));
-    Some(())
+        .add_data(&positions, renderer::VertexSize::VEC3, 0)
+        .unwrap();
+    result
+        .add_data(&normals, renderer::VertexSize::VEC3, 1)
+        .unwrap();
+    result
 }

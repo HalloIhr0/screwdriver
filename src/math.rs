@@ -9,8 +9,8 @@ pub fn line_plane_intersection(
     plane_normal: &glm::Vec3,
 ) -> Option<glm::Vec3> {
     // Calculation from https://en.wikipedia.org/w/index.php?title=Line%E2%80%93plane_intersection&oldid=1142933404#Algebraic_form
-    let dividend = glm::dot(&(plane_point - line_point), &plane_normal);
-    let divisor = glm::dot(&line_normal, &plane_normal);
+    let dividend = glm::dot(&(plane_point - line_point), plane_normal);
+    let divisor = glm::dot(line_normal, plane_normal);
     if divisor == 0.0 {
         return None;
     }
@@ -86,10 +86,18 @@ pub fn clip_polyhedron_to_plane(
             ),
             plane_point,
             plane_normal,
-        ).expect("The sides have been checked before, must intersect");
-        let new_vertex_one = match polyhedron.vertices.iter().position(|x| x==&new_vertex_one) {
+        )
+        .expect("The sides have been checked before, must intersect");
+        let new_vertex_one = match polyhedron
+            .vertices
+            .iter()
+            .position(|x| x == &new_vertex_one)
+        {
             Some(i) => i,
-            None => {polyhedron.vertices.push(new_vertex_one); polyhedron.vertices.len() - 1},
+            None => {
+                polyhedron.vertices.push(new_vertex_one);
+                polyhedron.vertices.len() - 1
+            }
         };
         let new_vertex_two = line_segment_plane_intersection(
             (
@@ -102,18 +110,29 @@ pub fn clip_polyhedron_to_plane(
             ),
             plane_point,
             plane_normal,
-        ).expect("The sides have been checked before, must intersect");
-        let new_vertex_two = match polyhedron.vertices.iter().position(|x| x==&new_vertex_two) {
+        )
+        .expect("The sides have been checked before, must intersect");
+        let new_vertex_two = match polyhedron
+            .vertices
+            .iter()
+            .position(|x| x == &new_vertex_two)
+        {
             Some(i) => i,
-            None => {polyhedron.vertices.push(new_vertex_two); polyhedron.vertices.len() - 1},
+            None => {
+                polyhedron.vertices.push(new_vertex_two);
+                polyhedron.vertices.len() - 1
+            }
         };
         new_face_edges.insert(new_vertex_one, new_vertex_two);
         inside_vertices.push_front(new_vertex_one);
         inside_vertices.push_front(new_vertex_two);
         new_faces.push(inside_vertices.into())
     }
-    if new_face_edges.len() > 0 {
-        let start = *new_face_edges.keys().next().expect("Invalid polyhedron: Unconnected vertex");
+    if !new_face_edges.is_empty() {
+        let start = *new_face_edges
+            .keys()
+            .next()
+            .expect("Invalid polyhedron: Unconnected vertex");
         let mut edge_loop = vec![start];
         let mut current = new_face_edges[&start];
         while current != start {
