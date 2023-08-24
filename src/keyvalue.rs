@@ -159,6 +159,18 @@ impl KeyValues {
         }
     }
 
+    /// Gets every pair of key/value in this subkey
+    /// Only works on KeyValues::List
+    pub fn get_all_kv_pairs(&self) -> Vec<(&String, &Self)> {
+        match self {
+            KeyValues::Value { .. } => {
+                eprintln!("Tried to get KVs from KeyValues::Value");
+                vec![]
+            }
+            KeyValues::List { subkeys } => subkeys.iter().map(|(name, value)| (name, value)).collect()
+        }
+    }
+
     /// Gets the actual value with the specified name
     /// Only works on KeyValues::Value
     pub fn get_value(&self) -> Option<&String> {
