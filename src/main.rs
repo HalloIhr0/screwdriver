@@ -15,7 +15,7 @@ mod renderer;
 fn main() {
     let args = &env::args().collect::<Vec<String>>();
     // println!("{}", String::from_utf8(VPK::parse(&args[2]).unwrap().get("scripts/population/mvm_mannworks_intermediate", "pop").unwrap()).unwrap());
-    Gameinfo::parse(Path::new(&args[2]));
+    Gameinfo::parse(Path::new(&args[2])).unwrap();
 
     let vmf = VMF::parse(Path::new(&args[1])).unwrap();
 

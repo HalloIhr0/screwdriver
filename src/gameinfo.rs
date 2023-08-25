@@ -1,14 +1,16 @@
-use std::{path::{Path, PathBuf, self}, fs};
+use std::{path::{Path, PathBuf, self}, fs, ffi::OsString};
 
 use crate::{keyvalue::KeyValues, vpk::VPK};
 
 pub struct Gameinfo {
-    
+    search_paths: Vec<SearchPathProvider>
 }
 
 impl Gameinfo {
     pub fn parse(file: &Path) -> Option<Self> {
         let kv = KeyValues::parse(file).ok()?;
+
+        let mut search_paths = vec![];
         for (keys, path) in kv.get("GameInfo")?.get("FileSystem")?.get("SearchPaths")?.get_all_kv_pairs() {
             // Just make this lowercase to be sure it doesn't break. Even the Valve Developer Community page on gameinfo uses upper- and lowercase
             let keys: Vec<String> = keys.split('+').map(|x| x.to_lowercase()).collect();
@@ -24,18 +26,51 @@ impl Gameinfo {
                 let root = file.parent()?.parent()?.canonicalize().ok()?; // if gameinfo is in GameDir/mod/gameinfo.txt, this gets the absolute path to GameDir
 
                 for file in get_file_case_insensitive(&root, path)? {
-                    println!("{}", file.display());
+                    if file.is_dir() {
+                        println!("Dir {:?}", file);
+                        search_paths.push(SearchPathProvider::Dir(file));
+                    } else if file.extension() == Some(&OsString::from("vpk")) {
+                        let file = file.to_str()?;
+                        if !file.ends_with("_dir.vpk") {
+                            eprintln!("Unsupported VPK: {}", file);
+                            continue;
+                        }
+                        println!("VPK {:?}", &file[..(file.len()-8)]);
+                        search_paths.push(SearchPathProvider::Vpk(VPK::parse(&file[..(file.len()-8)])?)) // len("_dir.vpk") = 8
+                    }
                 }
             }
         }
+        Some(Self { search_paths })
+    }
 
-        Some(Self { })
+    pub fn get_file(&self, path: &str, extension: &str) -> Option<Vec<u8>> {
+        for source in &self.search_paths {
+            if let Some(content) = source.get(path, extension) {
+                return Some(content);
+            }
+        }
+        None
     }
 }
 
+#[derive(Debug)]
 enum SearchPathProvider {
     Dir(PathBuf),
     Vpk(VPK)
+}
+
+impl SearchPathProvider {
+    pub fn get(&self, path: &str, extension: &str) -> Option<Vec<u8>> {
+        match self {
+            SearchPathProvider::Dir(root) => {
+                let full_path = get_file_case_insensitive(root, Path::new(&format!("{}.{}", path, extension)))?;
+                let full_path = full_path.get(0)?;
+                fs::read(full_path).ok()
+            },
+            SearchPathProvider::Vpk(vpk) => vpk.get(path, extension),
+        }
+    }
 }
 
 /// case_ignored_path should always come from canonicalize
