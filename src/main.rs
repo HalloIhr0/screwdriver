@@ -1,21 +1,25 @@
-use imgui::Context;
+use imgui::{Context, TextureId};
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
 use nalgebra_glm as glm;
-use renderer::{Renderer, VertexData};
-use screwdriver::{vmf::{BrushShape, VMF}, vpk::VPK, gameinfo::Gameinfo};
+use renderer::{Renderer, Texture, VertexData};
+use screwdriver::{
+    gameinfo::Gameinfo,
+    vmf::{BrushShape, VMF},
+};
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::f32::consts::PI;
 use std::{env, path::Path};
+use vtflib::VtfLib;
 
 mod renderer;
 
 fn main() {
     let args = &env::args().collect::<Vec<String>>();
     // println!("{}", String::from_utf8(VPK::parse(&args[2]).unwrap().get("scripts/population/mvm_mannworks_intermediate", "pop").unwrap()).unwrap());
-    Gameinfo::parse(Path::new(&args[2])).unwrap();
+    let gameinfo = Gameinfo::parse(Path::new(&args[2])).unwrap();
 
     let vmf = VMF::parse(Path::new(&args[1])).unwrap();
 
@@ -83,6 +87,15 @@ fn main() {
     )
     .unwrap();
 
+    let content = gameinfo
+        .get_file("materials/editor/obsolete", "vtf")
+        .unwrap();
+    let (vtflib, mut guard) = VtfLib::initialize().unwrap();
+    let vtf = vtflib.new_vtf_file();
+    let mut vtf = vtf.bind(&mut guard);
+    vtf.load(&content).unwrap();
+    let texture = Texture::create_from_vtf(&renderer, &vtf).unwrap();
+
     let proj = glm::perspective::<f32>(1280.0 / 720.0, f32::to_radians(45.0), 1.0, 16384.0);
     renderer.enable_depth_test(true);
     renderer.enable_backface_culling(true);
@@ -140,6 +153,13 @@ fn main() {
 
         let ui = imgui.new_frame();
         ui.show_metrics_window(&mut true);
+        ui.window("Image").build(|| {
+            imgui::Image::new(
+                TextureId::new(texture.get_id() as usize),
+                [texture.width as f32, texture.height as f32],
+            )
+            .build(ui);
+        });
 
         let draw_data = imgui.render();
 

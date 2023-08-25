@@ -167,7 +167,9 @@ impl KeyValues {
                 eprintln!("Tried to get KVs from KeyValues::Value");
                 vec![]
             }
-            KeyValues::List { subkeys } => subkeys.iter().map(|(name, value)| (name, value)).collect()
+            KeyValues::List { subkeys } => {
+                subkeys.iter().map(|(name, value)| (name, value)).collect()
+            }
         }
     }
 

@@ -14,14 +14,14 @@ struct FileInfo {
 
 #[derive(Debug)]
 pub struct VPK {
-    base_path: String ,
+    base_path: String,
     tree_size: u32,
     file_info: HashMap<(String, String), FileInfo>,
 }
 
 impl VPK {
     pub fn parse(base_path: &str) -> Option<Self> {
-        let mut file = File::open(base_path.to_string()+"_dir.vpk").ok()?;
+        let mut file = File::open(base_path.to_string() + "_dir.vpk").ok()?;
 
         assert_eq!(read_uint(&mut file)?, 0x55AA1234); // Signature
         let tree_size;
@@ -44,17 +44,17 @@ impl VPK {
         let mut files = HashMap::new();
         loop {
             let extension = read_string(&mut file)?;
-            if extension == "" {
+            if extension.is_empty() {
                 break;
             }
             loop {
                 let path = read_string(&mut file)?;
-                if path == "" {
+                if path.is_empty() {
                     break;
                 }
                 loop {
                     let filename = read_string(&mut file)?;
-                    if filename == "" {
+                    if filename.is_empty() {
                         break;
                     }
                     read_uint(&mut file); // CRC
@@ -66,26 +66,36 @@ impl VPK {
                     let mut preload_data = vec![0u8; preload_len as usize];
                     file.read_exact(&mut preload_data).ok()?;
                     files.insert(
-                        (format!("{}/{}", path, filename).replace('\\', "/"), extension.clone()), // Replace just to make sure bugs doesn't happen
+                        (
+                            format!("{}/{}", path, filename).replace('\\', "/"),
+                            extension.clone(),
+                        ), // Replace just to make sure bugs doesn't happen
                         FileInfo {
                             archive_index,
                             offset,
                             lenght,
                             preload_data,
-                        }
+                        },
                     );
                 }
             }
         }
 
-        Some(Self { base_path: base_path.to_string(), tree_size, file_info: files })
+        Some(Self {
+            base_path: base_path.to_string(),
+            tree_size,
+            file_info: files,
+        })
     }
 
     pub fn get(&self, path: &str, extension: &str) -> Option<Vec<u8>> {
-        let info = self.file_info.get(&(path.replace('\\', "/"), String::from(extension)))?;
+        let info = self
+            .file_info
+            .get(&(path.replace('\\', "/"), String::from(extension)))?;
         let mut result = info.preload_data.clone();
-        if info.archive_index == 0x7FFF { // Data follows tree
-            let mut file = File::open(self.base_path.to_string()+"_dir.vpk").ok()?;
+        if info.archive_index == 0x7FFF {
+            // Data follows tree
+            let mut file = File::open(self.base_path.to_string() + "_dir.vpk").ok()?;
             file.seek(SeekFrom::Current(28)).ok()?; // Header size
             file.seek(SeekFrom::Current(self.tree_size as i64)).ok()?;
             file.seek(SeekFrom::Current(info.offset as i64)).ok()?;
@@ -93,7 +103,8 @@ impl VPK {
             file.read_exact(&mut data).ok()?;
             result.append(&mut data);
         } else {
-            let mut file = File::open(format!("{}_{:03}.vpk", self.base_path, info.archive_index)).ok()?;
+            let mut file =
+                File::open(format!("{}_{:03}.vpk", self.base_path, info.archive_index)).ok()?;
             file.seek(SeekFrom::Current(info.offset as i64)).ok()?;
             let mut data = vec![0u8; info.lenght as usize];
             file.read_exact(&mut data).ok()?;
@@ -120,14 +131,16 @@ fn read_string(file: &mut File) -> Option<String> {
 fn read_uint(file: &mut File) -> Option<u32> {
     let mut buf = [0u8; 4];
     file.read_exact(&mut buf).ok()?;
-    return Some((buf[0] as u32)
-        | ((buf[1] as u32) << 8)
-        | ((buf[2] as u32) << 16)
-        | ((buf[3] as u32) << 24));
+    Some(
+        (buf[0] as u32)
+            | ((buf[1] as u32) << 8)
+            | ((buf[2] as u32) << 16)
+            | ((buf[3] as u32) << 24),
+    )
 }
 
 fn read_ushort(file: &mut File) -> Option<u16> {
     let mut buf = [0u8; 2];
     file.read_exact(&mut buf).ok()?;
-    return Some((buf[0] as u16) | ((buf[1] as u16) << 8));
+    Some((buf[0] as u16) | ((buf[1] as u16) << 8))
 }

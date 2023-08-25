@@ -5,6 +5,8 @@ mod shader;
 pub use shader::Shader;
 mod vertex_data;
 pub use vertex_data::{VertexData, VertexSize};
+mod texture;
+pub use texture::Texture;
 
 pub struct Renderer {
     context: Rc<Context>,
