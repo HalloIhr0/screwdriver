@@ -92,7 +92,8 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
         let new_vertex_one = match polyhedron
             .vertices
             .iter()
-            .position(|x| x == &new_vertex_one)
+            // .position(|x| x == &new_vertex_one)
+            .position(|x| (x - &new_vertex_one).norm_squared() < 0.0001)
         {
             Some(i) => i,
             None => {
@@ -116,7 +117,7 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
         let new_vertex_two = match polyhedron
             .vertices
             .iter()
-            .position(|x| x == &new_vertex_two)
+            .position(|x| (x - &new_vertex_two).norm_squared() < 0.0001)
         {
             Some(i) => i,
             None => {
@@ -124,7 +125,10 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
                 polyhedron.vertices.len() - 1
             }
         };
-        new_face_edges.insert(new_vertex_one, new_vertex_two);
+        if new_vertex_one != new_vertex_two {
+            // If we don't insert, it should still be fine
+            new_face_edges.insert(new_vertex_one, new_vertex_two);
+        }
         inside_vertices.push_front(new_vertex_one);
         inside_vertices.push_front(new_vertex_two);
         new_faces.push((info.clone(), inside_vertices.into()));
@@ -140,7 +144,13 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
             edge_loop.push(current);
             current = new_face_edges[&current];
         }
-        assert_eq!(new_face_edges.len(), edge_loop.len());
+        assert_eq!(
+            new_face_edges.len(),
+            edge_loop.len(),
+            "{:?}\n{:?}",
+            new_face_edges,
+            edge_loop
+        );
         new_faces.push((new_face_info, edge_loop));
     }
     polyhedron.faces = new_faces

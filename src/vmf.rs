@@ -59,9 +59,9 @@ pub struct Face {
     pub material: String,
     pub uaxis: UVAxis,
     pub vaxis: UVAxis,
-    rotation: f32,
     lightmapscale: i32,
     smoothing_groups: i32,
+    dispinfo: Option<Dispinfo>,
 }
 
 impl Face {
@@ -92,21 +92,16 @@ impl Face {
         Some(Self {
             id: kv.get("id")?.get_value()?.parse().ok()?,
             plane: (
-                // TODO: round is a bit strange, but it should keep accuracy? maybe?
-                // Also this prevents a crash in plane clipping when trying to load a decompiled version of pl_upward
-                // I don't understand this either
-                // And this makek sub-1-unit-brushes impossible
-                glm::vec3(x1.round(), y1.round(), z1.round()),
-                glm::vec3(x2.round(), y2.round(), z2.round()),
-                glm::vec3(x3.round(), y3.round(), z3.round()),
+                glm::vec3(x1, y1, z1),
+                glm::vec3(x2, y2, z2),
+                glm::vec3(x3, y3, z3),
             ),
             material: kv.get("material")?.get_value()?.to_string(),
             uaxis: UVAxis::parse(kv.get("uaxis")?.get_value()?)?,
             vaxis: UVAxis::parse(kv.get("vaxis")?.get_value()?)?,
-            //rotation: kv.get("rotation")?.get_value()?.parse().ok()?,
-            rotation: 0.0,
             lightmapscale: kv.get("lightmapscale")?.get_value()?.parse().ok()?,
             smoothing_groups: kv.get("smoothing_groups")?.get_value()?.parse().ok()?,
+            dispinfo: None,
         })
     }
 }
@@ -137,6 +132,26 @@ impl UVAxis {
             scaling,
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Dispinfo {
+    power: DispPower,
+    startpos: glm::Vec3,
+    elevation: f32,
+    subdiv: bool,
+    normals: Vec<Vec<glm::Vec3>>,
+    distances: Vec<Vec<f32>>,
+    offsets: Vec<Vec<glm::Vec3>>,
+    offset_normals: Vec<Vec<glm::Vec3>>,
+    alphas: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+enum DispPower {
+    Power2 = 2,
+    Power3 = 3,
+    Power4 = 4,
 }
 
 fn get_polyhedron(faces: Vec<Face>) -> BrushShape {

@@ -19,7 +19,6 @@ mod renderer;
 
 fn main() {
     let args = &env::args().collect::<Vec<String>>();
-    // println!("{}", String::from_utf8(VPK::parse(&args[2]).unwrap().get("scripts/population/mvm_mannworks_intermediate", "pop").unwrap()).unwrap());
     let gameinfo = Gameinfo::parse(Path::new(&args[2])).unwrap();
 
     let vmf = VMF::parse(Path::new(&args[1])).unwrap();
@@ -290,10 +289,12 @@ fn get_vertexdatas(
 #[inline]
 fn get_uv_point(info: &Face, point: &glm::Vec3) -> glm::Vec2 {
     glm::vec2(
-        glm::dot(point, &info.uaxis.dir) / glm::dot(&info.uaxis.dir, &info.uaxis.dir)
+        glm::dot(point, &info.uaxis.dir)
+            / glm::dot(&info.uaxis.dir, &info.uaxis.dir)
             / info.uaxis.scaling
             + info.uaxis.translation,
-        glm::dot(point, &info.vaxis.dir) / glm::dot(&info.vaxis.dir, &info.vaxis.dir)
+        glm::dot(point, &info.vaxis.dir)
+            / glm::dot(&info.vaxis.dir, &info.vaxis.dir)
             / info.vaxis.scaling
             + info.vaxis.translation,
     )
