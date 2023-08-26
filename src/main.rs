@@ -1,11 +1,11 @@
-use imgui::{Context, TextureId};
+use imgui::Context;
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
 use nalgebra_glm as glm;
 use renderer::{Renderer, Texture, VertexData};
 use screwdriver::{
     gameinfo::Gameinfo,
-    keyvalue::KeyValues,
+    material::Material,
     vmf::{BrushShape, Face, VMF},
 };
 use sdl2::event::{Event, WindowEvent};
@@ -59,67 +59,33 @@ fn main() {
     let mut vtf = vtf.bind(&mut guard);
 
     let vertex_data = get_vertexdatas(
+        &gameinfo,
         &renderer,
         vmf.worldbrushes.iter().map(|x| &x.shape).collect(),
     );
 
     let mut textures = HashMap::new();
     for material in vertex_data.keys() {
-        if let Ok(kv) =
-            KeyValues::parse_from_searchpath(&gameinfo, &format!("materials/{}", material), "vmt")
-        {
-            let (shader, properties) = kv.get_all_kv_pairs()[0]; // A meterial file shouldn't be empty
-            match shader.to_lowercase().as_str() {
-                "lightmappedgeneric" => {
-                    let texname = properties
-                        .get("$basetexture")
-                        .expect(material)
-                        .get_value()
-                        .expect("b");
-                    let content = gameinfo
-                        .get_file(&format!("materials/{}", texname), "vtf")
-                        .unwrap();
-                    vtf.load(&content).unwrap();
-                    let texture = Texture::create_from_vtf(&renderer, &vtf).unwrap();
-                    textures.insert(material.clone(), texture);
-                }
-                x => {
-                    eprintln!("Unknown shader {} in {}", x, material)
-                }
-            }
-        } else {
-            eprintln!("material {material} not found")
+        for texture in material.get_all_textures() {
+            let content = gameinfo
+                .get_file(&format!("materials/{}", texture), "vtf")
+                .unwrap();
+            vtf.load(&content).unwrap();
+            let texture_data = Texture::create_from_vtf(&renderer, &vtf).unwrap();
+            textures.insert(texture.clone(), texture_data);
         }
     }
 
-    let mut shader = renderer::Shader::create(
+    let mut lightmappedgeneric = renderer::Shader::create(
         &renderer,
-        r#"#version 330 core
-        layout (location=0) in vec3 pos;
-        layout (location=1) in vec3 normal;
-        layout (location=2) in vec2 uvcoord;
-        out vec2 uvcoord_pass;
-        out float light;
-        uniform mat4 transform;
-        uniform mat4 view;
-        uniform mat4 projection;
-        uniform mat3 normal_transform;
-        void main() {
-            vec3 view_dir = vec3(0, 0, 1);
-            light = clamp(dot(normalize(normal_transform * normal), view_dir), 0.0, 1.0)*0.8 + 0.2;
-            uvcoord_pass = uvcoord;
-            gl_Position = projection*(view*(transform*vec4(pos, 1.0)));
-        }"#,
-        r#"#version 330 core
-        in vec2 uvcoord_pass;
-        in float light;
-        out vec4 out_color;
-        uniform sampler2D color_texture;
-        uniform vec2 tex_size;
-        void main() {
-            vec3 base_color = texture(color_texture, uvcoord_pass/tex_size).rgb;
-            out_color = vec4(base_color*light, 1.0);
-        }"#,
+        include_str!("shaders/lightmappedgeneric-vert.glsl"),
+        include_str!("shaders/lightmappedgeneric-frag.glsl"),
+    )
+    .unwrap();
+    let mut unlitgeneric = renderer::Shader::create(
+        &renderer,
+        include_str!("shaders/unlitgeneric-vert.glsl"),
+        include_str!("shaders/unlitgeneric-frag.glsl"),
     )
     .unwrap();
 
@@ -193,39 +159,45 @@ fn main() {
 
         let draw_data = imgui.render();
 
-        let transform = glm::Mat4::identity();
-        // let mut transform = glm::Mat4::identity();
-        // transform = glm::translate(&transform, &glm::vec3(x_pos, y_pos, z_pos));
-        // transform = glm::rotate(
-        //     &transform,
-        //     f32::to_radians(rotation),
-        //     &glm::vec3(0.0, 1.0, 0.0),
-        // );
-        // transform = glm::scale(&transform, &glm::vec3(0.5, 0.5, 0.5));
         let view = glm::look_at(&camera_pos, &(camera_pos + camera_front), &camera_up);
 
-        let normal_transform = glm::mat4_to_mat3(&glm::inverse(&(view * transform)).transpose());
+        let normal_transform = glm::mat4_to_mat3(&glm::inverse(&view).transpose());
 
         renderer.clear_color_buffer();
         renderer.clear_depth_buffer();
         renderer.fill(0.27, 0.27, 0.5, 1.0);
 
-        shader.set_uniform_mat4("projection", &proj);
-        shader.set_uniform_mat4("view", &view);
-        shader.set_uniform_mat4("transform", &transform);
-        shader.set_uniform_mat3("normal_transform", &normal_transform);
+        lightmappedgeneric.set_uniform_mat4("projection", &proj);
+        lightmappedgeneric.set_uniform_mat4("view", &view);
+        lightmappedgeneric.set_uniform_mat3("normal_transform", &normal_transform);
+        unlitgeneric.set_uniform_mat4("projection", &proj);
+        unlitgeneric.set_uniform_mat4("view", &view);
 
         for (material, data) in &vertex_data {
-            if !(!draw_tool && material.to_lowercase().starts_with("tools/")) {
-                if let Some(texture) = textures.get(material) {
-                    shader.set_uniform_texture("color_texture", texture, 0);
-                    shader.set_uniform_vec2(
-                        "tex_size",
-                        &glm::vec2(texture.width as f32, texture.height as f32),
-                    );
-                    renderer.draw(data, &shader);
-                } else {
-                    //println!("cant get texture for {material}")
+            if draw_tool || !material.is_tool() {
+                match material {
+                    Material::LightmappedGeneric { basetexture } => {
+                        let texture = &textures[basetexture];
+                        lightmappedgeneric.set_uniform_texture("basetexture", texture, 0);
+                        lightmappedgeneric.set_uniform_vec2(
+                            "tex_size",
+                            &glm::vec2(texture.width as f32, texture.height as f32),
+                        );
+                        renderer.draw(data, &lightmappedgeneric);
+                    }
+                    Material::UnlitGeneric { basetexture } => {
+                        let texture = &textures[basetexture];
+                        unlitgeneric.set_uniform_texture("basetexture", texture, 0);
+                        unlitgeneric.set_uniform_vec2(
+                            "tex_size",
+                            &glm::vec2(texture.width as f32, texture.height as f32),
+                        );
+                        renderer.draw(data, &unlitgeneric);
+                    }
+                    Material::WorldVertexTransition {
+                        basetexture,
+                        basetexture2,
+                    } => todo!(),
                 }
             }
         }
@@ -236,7 +208,11 @@ fn main() {
     }
 }
 
-fn get_vertexdatas(renderer: &Renderer, brushes: Vec<&BrushShape>) -> HashMap<String, VertexData> {
+fn get_vertexdatas(
+    gameinfo: &Gameinfo,
+    renderer: &Renderer,
+    brushes: Vec<&BrushShape>,
+) -> HashMap<Material, VertexData> {
     let mut data: HashMap<String, (Vec<f32>, Vec<f32>, Vec<f32>)> = HashMap::new(); // Positions, Normals, UVs
     for brush in brushes {
         for (info, face) in &brush.faces {
@@ -301,7 +277,11 @@ fn get_vertexdatas(renderer: &Renderer, brushes: Vec<&BrushShape>) -> HashMap<St
         vertex_data
             .add_data(&uvs, renderer::VertexSize::VEC2, 2)
             .unwrap();
-        renderer_data.insert(material, vertex_data);
+        if let Some(material) = Material::parse(gameinfo, &material) {
+            renderer_data.insert(material, vertex_data);
+        } else {
+            eprintln!("material {material} not found");
+        }
     }
 
     renderer_data
@@ -310,10 +290,10 @@ fn get_vertexdatas(renderer: &Renderer, brushes: Vec<&BrushShape>) -> HashMap<St
 #[inline]
 fn get_uv_point(info: &Face, point: &glm::Vec3) -> glm::Vec2 {
     glm::vec2(
-        (glm::dot(point, &info.uaxis.dir) / glm::dot(&info.uaxis.dir, &info.uaxis.dir))
+        glm::dot(point, &info.uaxis.dir) / glm::dot(&info.uaxis.dir, &info.uaxis.dir)
             / info.uaxis.scaling
             + info.uaxis.translation,
-        (glm::dot(point, &info.vaxis.dir) / glm::dot(&info.vaxis.dir, &info.vaxis.dir))
+        glm::dot(point, &info.vaxis.dir) / glm::dot(&info.vaxis.dir, &info.vaxis.dir)
             / info.vaxis.scaling
             + info.vaxis.translation,
     )

@@ -67,7 +67,8 @@ impl VPK {
                     file.read_exact(&mut preload_data).ok()?;
                     files.insert(
                         (
-                            format!("{}/{}", path, filename).to_lowercase()
+                            format!("{}/{}", path, filename)
+                                .to_lowercase()
                                 .replace('\\', "/"),
                             extension.to_lowercase(),
                         ), // Replace just to make sure bugs doesn't happen
