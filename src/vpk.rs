@@ -67,8 +67,9 @@ impl VPK {
                     file.read_exact(&mut preload_data).ok()?;
                     files.insert(
                         (
-                            format!("{}/{}", path, filename).replace('\\', "/"),
-                            extension.clone(),
+                            format!("{}/{}", path, filename).to_lowercase()
+                                .replace('\\', "/"),
+                            extension.to_lowercase(),
                         ), // Replace just to make sure bugs doesn't happen
                         FileInfo {
                             archive_index,
@@ -89,9 +90,10 @@ impl VPK {
     }
 
     pub fn get(&self, path: &str, extension: &str) -> Option<Vec<u8>> {
-        let info = self
-            .file_info
-            .get(&(path.replace('\\', "/"), String::from(extension)))?;
+        let info = self.file_info.get(&(
+            path.replace('\\', "/").to_lowercase(),
+            extension.to_lowercase(),
+        ))?;
         let mut result = info.preload_data.clone();
         if info.archive_index == 0x7FFF {
             // Data follows tree

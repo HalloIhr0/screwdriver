@@ -1,3 +1,4 @@
+use glm::Vec3;
 use nalgebra_glm as glm;
 use scanf::sscanf;
 use std::path::Path;
@@ -55,9 +56,9 @@ impl Brush {
 pub struct Face {
     id: i32,
     plane: (glm::Vec3, glm::Vec3, glm::Vec3),
-    material: String,
-    uaxis: UVAxis,
-    vaxis: UVAxis,
+    pub material: String,
+    pub uaxis: UVAxis,
+    pub vaxis: UVAxis,
     rotation: f32,
     lightmapscale: i32,
     smoothing_groups: i32,
@@ -111,12 +112,10 @@ impl Face {
 }
 
 #[derive(Debug, Clone)]
-struct UVAxis {
-    x: f32,
-    y: f32,
-    z: f32,
-    translation: f32,
-    scaling: f32,
+pub struct UVAxis {
+    pub dir: Vec3,
+    pub translation: f32,
+    pub scaling: f32,
 }
 
 impl UVAxis {
@@ -127,10 +126,13 @@ impl UVAxis {
         let mut translation = 0.0;
         let mut scaling = 0.0;
         sscanf!(input, "[{} {} {} {}] {}", x, y, z, translation, scaling).ok()?;
+        let dir = glm::vec3(x, y, z);
+        if f32::abs(dir.norm_squared() - 1.0) > 0.1 {
+            eprintln!("UVaxis isn't normalized");
+            // TODO: handle this properly instead of just giving an error message
+        }
         Some(Self {
-            x,
-            y,
-            z,
+            dir,
             translation,
             scaling,
         })

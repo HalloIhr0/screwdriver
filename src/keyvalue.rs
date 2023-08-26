@@ -1,6 +1,8 @@
 use std::{fs, io, iter::Peekable, path::Path, str::Chars};
 use thiserror::Error;
 
+use crate::gameinfo::Gameinfo;
+
 /// Parser for the KeyValues format
 /// https://developer.valvesoftware.com/wiki/KeyValues
 /// Conditionl statements don't work (for now)
@@ -31,102 +33,46 @@ impl KeyValues {
         let content = fs::read_to_string(file)
             .map_err(|_| KeyValuesError::InvalidFile(file.to_string_lossy().to_string()))?;
         let mut content = content.chars().peekable();
-        let mut current = vec![];
-        let mut stack = vec![];
-        'parse: loop {
-            skip_whitespace(&mut content);
-            match content.peek() {
-                None => {
-                    break 'parse;
-                }
-                Some('}') => {
-                    let (name, new_current) = stack.pop().ok_or(KeyValuesError::UnexpectedEnd)?;
-                    let part = Self::List { subkeys: current };
-                    current = new_current;
-                    current.push((name, part));
-                    content.next();
-                    continue 'parse;
-                }
-                Some('/') => {
-                    content.next();
-                    match content.peek() {
-                        Some('*') => {
-                            let mut last = content.next();
-                            loop {
-                                match (last, content.next()) {
-                                    (Some('*'), Some('/')) => {
-                                        continue 'parse;
-                                    }
-                                    (_, None) => {
-                                        break 'parse;
-                                    }
-                                    (_, x) => {
-                                        last = x;
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            loop {
-                                // This should only trigger for 2 slashes, but there is a bug in the original parser which only looks for one
-                                match content.next() {
-                                    None => {
-                                        break 'parse;
-                                    }
-                                    Some('\n') => {
-                                        continue 'parse;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-            let name = read_text(&mut content)?;
-            skip_whitespace(&mut content);
-            match content.peek().ok_or(KeyValuesError::UnexpectedEnd)? {
-                '{' => {
-                    content.next();
-                    stack.push((name, current));
-                    current = vec![];
-                }
-                '}' => {
-                    return Err(KeyValuesError::UnexpectedClosingBrace(name));
-                }
-                _ => {
-                    let value = read_text(&mut content)?;
-                    // Handle macros
-                    if name.starts_with('#') {
-                        match name.as_str() {
-                            "#include" | "#base" => {
-                                let include_path = file
-                                    .parent()
-                                    .expect("is safe if we can read the file")
-                                    .join(value);
-                                let include_data = Self::parse(&include_path)?;
-                                if let Self::List { mut subkeys } = include_data {
-                                    current.append(&mut subkeys);
-                                }
-                            }
-                            _ => return Err(KeyValuesError::UnknownMacro(name)),
-                        }
-                    } else {
-                        current.push((name, Self::Value { value }))
-                    }
-                }
-            }
-        }
-        if !stack.is_empty() {
-            return Err(KeyValuesError::UnexpectedEnd);
-        }
-        Ok(Self::List { subkeys: current })
+        Self::parse_internal(&mut content, &|x| {
+            let include_path = file
+                .parent()
+                .expect("is safe if we can read the file")
+                .join(x);
+            Self::parse(&include_path)
+        })
+    }
+
+    pub fn parse_from_searchpath(
+        gameinfo: &Gameinfo,
+        path: &str,
+        extension: &str,
+    ) -> Result<Self, KeyValuesError> {
+        let content = gameinfo
+            .get_file(path, extension)
+            .ok_or(KeyValuesError::InvalidFile(format!(
+                "(SearchPath) {}.{}",
+                path, extension
+            )))?;
+        let content = String::from_utf8(content).or(Err(KeyValuesError::InvalidFile(format!(
+            "(SearchPath) {}.{}",
+            path, extension
+        ))))?;
+        let mut content = content.chars().peekable();
+        Self::parse_internal(&mut content, &|x| {
+            let (p, e) = x
+                .split_once('.')
+                .ok_or(KeyValuesError::InvalidFile(format!(
+                    "(SearchPath) {} (inside {}.{})",
+                    x, path, extension
+                )))?; // Should be safe to assume filenames only contain one dot
+            Self::parse_from_searchpath(gameinfo, p, e)
+        })
     }
 
     /// Gets the first value with the specified name
     /// Return None if the name does not exist
     /// Only works on KeyValues::List
+    /// Name should always be lowercase
     pub fn get(&self, name: &str) -> Option<&Self> {
         match self {
             KeyValues::Value { .. } => {
@@ -146,6 +92,7 @@ impl KeyValues {
 
     /// Gets every value with the specified name
     /// Only works on KeyValues::List
+    /// Name should always be lowercase
     pub fn get_all(&self, name: &str) -> Vec<&Self> {
         match self {
             KeyValues::Value { .. } => {
@@ -161,6 +108,7 @@ impl KeyValues {
 
     /// Gets every pair of key/value in this subkey
     /// Only works on KeyValues::List
+    /// Keys are always lowercase
     pub fn get_all_kv_pairs(&self) -> Vec<(&String, &Self)> {
         match self {
             KeyValues::Value { .. } => {
@@ -201,6 +149,99 @@ impl KeyValues {
         };
 
         fs::write(file, content)
+    }
+
+    pub fn parse_internal(
+        content: &mut Peekable<Chars>,
+        file_open_handler: &dyn Fn(String) -> Result<Self, KeyValuesError>,
+    ) -> Result<Self, KeyValuesError> {
+        let mut current = vec![];
+        let mut stack: Vec<(String, Vec<(String, KeyValues)>)> = vec![];
+        'parse: loop {
+            skip_whitespace(content);
+            match content.peek() {
+                None => {
+                    break 'parse;
+                }
+                Some('}') => {
+                    let (name, new_current) = stack.pop().ok_or(KeyValuesError::UnexpectedEnd)?;
+                    let part = Self::List { subkeys: current };
+                    current = new_current;
+                    current.push((name.to_lowercase(), part));
+                    content.next();
+                    continue 'parse;
+                }
+                Some('/') => {
+                    content.next();
+                    match content.peek() {
+                        Some('*') => {
+                            let mut last = content.next();
+                            loop {
+                                match (last, content.next()) {
+                                    (Some('*'), Some('/')) => {
+                                        continue 'parse;
+                                    }
+                                    (_, None) => {
+                                        break 'parse;
+                                    }
+                                    (_, x) => {
+                                        last = x;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            loop {
+                                // This should only trigger for 2 slashes, but there is a bug in the original parser which only looks for one
+                                match content.next() {
+                                    None => {
+                                        break 'parse;
+                                    }
+                                    Some('\n') => {
+                                        continue 'parse;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let name = read_text(content)?;
+            skip_whitespace(content);
+            match content.peek().ok_or(KeyValuesError::UnexpectedEnd)? {
+                '{' => {
+                    content.next();
+                    stack.push((name.to_lowercase(), current));
+                    current = vec![];
+                }
+                '}' => {
+                    return Err(KeyValuesError::UnexpectedClosingBrace(name));
+                }
+                _ => {
+                    let value = read_text(content)?;
+                    // Handle macros
+                    if name.starts_with('#') {
+                        match name.as_str() {
+                            "#include" | "#base" => {
+                                let include_data = file_open_handler(value)?;
+                                if let Self::List { mut subkeys } = include_data {
+                                    current.append(&mut subkeys);
+                                }
+                            }
+                            _ => return Err(KeyValuesError::UnknownMacro(name)),
+                        }
+                    } else {
+                        current.push((name.to_lowercase(), Self::Value { value }))
+                    }
+                }
+            }
+        }
+        if !stack.is_empty() {
+            return Err(KeyValuesError::UnexpectedEnd);
+        }
+        Ok(Self::List { subkeys: current })
     }
 
     fn get_string(&self, name: &str, indent: u16) -> String {

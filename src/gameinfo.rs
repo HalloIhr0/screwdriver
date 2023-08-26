@@ -16,13 +16,13 @@ impl Gameinfo {
 
         let mut search_paths = vec![];
         for (keys, path) in kv
-            .get("GameInfo")?
-            .get("FileSystem")?
-            .get("SearchPaths")?
+            .get("gameinfo")?
+            .get("filesystem")?
+            .get("searchpaths")?
             .get_all_kv_pairs()
         {
             // Just make this lowercase to be sure it doesn't break. Even the Valve Developer Community page on gameinfo uses upper- and lowercase
-            let keys: Vec<String> = keys.split('+').map(|x| x.to_lowercase()).collect();
+            let keys: Vec<String> = keys.split('+').map(String::from).collect();
             // TF2 (and maybe other games) uses download to store assets downloaded from community servers
             // I've decided to exclude these, so that mappers dont accidentially use them (although stock hammer doesn't exclude them (This might be the first intentional difference (Why do i write bracket sentences in other bracket sentences)))
             if (keys.contains(&String::from("game")) || keys.contains(&String::from("mod")))

@@ -3,6 +3,11 @@ The source engine Hammer editor is a buggy mess that crashes every 3 minutes (or
 So i got the stupid idea to start a project i'm probably never gonna finish:  
 **Remake Hammer**
 
+## Usage
+```
+screwdriver <path to vmf> <path to gameinfo>
+```
+
 ## Controls:
 WASD - Move  
 Arrow Keys - Look around
@@ -11,7 +16,7 @@ Arrow Keys - Look around
 - FGD/SmartEdit support
 - 2D views
 - Displacements
-- Textures
+- Transparent Textures
 - Entities
 - The almighty carve tool
 - Every other inferior tool

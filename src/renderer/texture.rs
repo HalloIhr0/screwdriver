@@ -52,6 +52,13 @@ impl Texture {
         }
     }
 
+    pub(super) fn bind(&self) {
+        unsafe {
+            self.context
+                .bind_texture(glow::TEXTURE_2D, Some(self.texture))
+        };
+    }
+
     // TODO: this shouldn't be pub, but is required for imgui
     pub fn get_id(&self) -> u32 {
         self.texture.0.get()
@@ -86,6 +93,7 @@ fn get_image_data_format(
                 glow::RGBA8,
             )
         }
+        ImageFormat::Bgra8888 => (data.to_vec(), glow::BGRA, glow::UNSIGNED_BYTE, glow::RGB8),
         ImageFormat::Dxt1 => (
             bcndecode::decode(
                 data,

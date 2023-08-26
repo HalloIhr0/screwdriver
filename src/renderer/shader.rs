@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use glow::{Context, HasContext, NativeProgram, NativeShader, NativeUniformLocation};
 use nalgebra_glm as glm;
 
-use super::Renderer;
+use super::{Renderer, Texture};
 
 pub struct Shader {
     context: Rc<Context>,
@@ -43,6 +43,22 @@ impl Shader {
         }
     }
 
+    pub fn set_uniform_vec2(&mut self, name: &str, value: &glm::Vec2) {
+        let location = self.get_uniform_location(name);
+        unsafe {
+            self.context
+                .uniform_2_f32_slice(location.as_ref(), glm::value_ptr(value))
+        }
+    }
+
+    pub fn set_uniform_vec3(&mut self, name: &str, value: &glm::Vec3) {
+        let location = self.get_uniform_location(name);
+        unsafe {
+            self.context
+                .uniform_3_f32_slice(location.as_ref(), glm::value_ptr(value))
+        }
+    }
+
     pub fn set_uniform_mat3(&mut self, name: &str, value: &glm::Mat3) {
         let location = self.get_uniform_location(name);
         unsafe {
@@ -56,6 +72,18 @@ impl Shader {
         unsafe {
             self.context
                 .uniform_matrix_4_f32_slice(location.as_ref(), false, glm::value_ptr(value))
+        }
+    }
+
+    pub fn set_uniform_texture(&mut self, name: &str, value: &Texture, slot: u8) {
+        if slot > 16 {
+            eprint!("Texture slot {} might not be supported", slot);
+        }
+        let location = self.get_uniform_location(name);
+        unsafe {
+            self.context.active_texture(glow::TEXTURE0 + slot as u32);
+            value.bind();
+            self.context.uniform_1_i32(location.as_ref(), slot as i32);
         }
     }
 

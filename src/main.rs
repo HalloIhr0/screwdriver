@@ -5,12 +5,13 @@ use nalgebra_glm as glm;
 use renderer::{Renderer, Texture, VertexData};
 use screwdriver::{
     gameinfo::Gameinfo,
-    vmf::{BrushShape, VMF},
+    keyvalue::KeyValues,
+    vmf::{BrushShape, Face, VMF},
 };
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
-use std::f32::consts::PI;
+use std::{collections::HashMap, f32::consts::PI};
 use std::{env, path::Path};
 use vtflib::VtfLib;
 
@@ -53,9 +54,42 @@ fn main() {
 
     let renderer = renderer::Renderer::create(gl);
 
-    let mut vertex_data = vec![];
-    for brush in vmf.worldbrushes {
-        vertex_data.push(vertexdata_from_polyhedron(&renderer, &brush.shape));
+    let (vtflib, mut guard) = VtfLib::initialize().unwrap();
+    let vtf = vtflib.new_vtf_file();
+    let mut vtf = vtf.bind(&mut guard);
+
+    let vertex_data = get_vertexdatas(
+        &renderer,
+        vmf.worldbrushes.iter().map(|x| &x.shape).collect(),
+    );
+
+    let mut textures = HashMap::new();
+    for material in vertex_data.keys() {
+        if let Ok(kv) =
+            KeyValues::parse_from_searchpath(&gameinfo, &format!("materials/{}", material), "vmt")
+        {
+            let (shader, properties) = kv.get_all_kv_pairs()[0]; // A meterial file shouldn't be empty
+            match shader.to_lowercase().as_str() {
+                "lightmappedgeneric" => {
+                    let texname = properties
+                        .get("$basetexture")
+                        .expect(material)
+                        .get_value()
+                        .expect("b");
+                    let content = gameinfo
+                        .get_file(&format!("materials/{}", texname), "vtf")
+                        .unwrap();
+                    vtf.load(&content).unwrap();
+                    let texture = Texture::create_from_vtf(&renderer, &vtf).unwrap();
+                    textures.insert(material.clone(), texture);
+                }
+                x => {
+                    eprintln!("Unknown shader {} in {}", x, material)
+                }
+            }
+        } else {
+            eprintln!("material {material} not found")
+        }
     }
 
     let mut shader = renderer::Shader::create(
@@ -63,7 +97,8 @@ fn main() {
         r#"#version 330 core
         layout (location=0) in vec3 pos;
         layout (location=1) in vec3 normal;
-        out vec3 color;
+        layout (location=2) in vec2 uvcoord;
+        out vec2 uvcoord_pass;
         out float light;
         uniform mat4 transform;
         uniform mat4 view;
@@ -72,29 +107,21 @@ fn main() {
         void main() {
             vec3 view_dir = vec3(0, 0, 1);
             light = clamp(dot(normalize(normal_transform * normal), view_dir), 0.0, 1.0)*0.8 + 0.2;
-            //light = clamp(dot(normal, view_dir), 0.2, 1.0);
-            color = pos;
+            uvcoord_pass = uvcoord;
             gl_Position = projection*(view*(transform*vec4(pos, 1.0)));
         }"#,
         r#"#version 330 core
-        in vec3 color;
+        in vec2 uvcoord_pass;
         in float light;
         out vec4 out_color;
+        uniform sampler2D color_texture;
+        uniform vec2 tex_size;
         void main() {
-            //out_color = vec4(color*light, 1.0);
-            out_color = vec4(vec3(1)*light, 1.0);
+            vec3 base_color = texture(color_texture, uvcoord_pass/tex_size).rgb;
+            out_color = vec4(base_color*light, 1.0);
         }"#,
     )
     .unwrap();
-
-    let content = gameinfo
-        .get_file("materials/editor/obsolete", "vtf")
-        .unwrap();
-    let (vtflib, mut guard) = VtfLib::initialize().unwrap();
-    let vtf = vtflib.new_vtf_file();
-    let mut vtf = vtf.bind(&mut guard);
-    vtf.load(&content).unwrap();
-    let texture = Texture::create_from_vtf(&renderer, &vtf).unwrap();
 
     let proj = glm::perspective::<f32>(1280.0 / 720.0, f32::to_radians(45.0), 1.0, 16384.0);
     renderer.enable_depth_test(true);
@@ -107,6 +134,8 @@ fn main() {
     let camera_speed = 64.0;
     let camera_rotate_speed = 0.1;
     let camera_up = glm::vec3(0.0, 0.0, 1.0);
+
+    let mut draw_tool = true;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main_loop: loop {
@@ -154,16 +183,18 @@ fn main() {
         let ui = imgui.new_frame();
         ui.show_metrics_window(&mut true);
         ui.window("Image").build(|| {
-            imgui::Image::new(
-                TextureId::new(texture.get_id() as usize),
-                [texture.width as f32, texture.height as f32],
-            )
-            .build(ui);
+            ui.checkbox("Draw Tool Textures", &mut draw_tool);
+            // imgui::Image::new(
+            //     TextureId::new(texture.get_id() as usize),
+            //     [texture.width as f32, texture.height as f32],
+            // )
+            // .build(ui);
         });
 
         let draw_data = imgui.render();
 
-        let mut transform = glm::Mat4::identity();
+        let transform = glm::Mat4::identity();
+        // let mut transform = glm::Mat4::identity();
         // transform = glm::translate(&transform, &glm::vec3(x_pos, y_pos, z_pos));
         // transform = glm::rotate(
         //     &transform,
@@ -184,8 +215,19 @@ fn main() {
         shader.set_uniform_mat4("transform", &transform);
         shader.set_uniform_mat3("normal_transform", &normal_transform);
 
-        for brush in &vertex_data {
-            renderer.draw(brush, &shader);
+        for (material, data) in &vertex_data {
+            if !(!draw_tool && material.to_lowercase().starts_with("tools/")) {
+                if let Some(texture) = textures.get(material) {
+                    shader.set_uniform_texture("color_texture", texture, 0);
+                    shader.set_uniform_vec2(
+                        "tex_size",
+                        &glm::vec2(texture.width as f32, texture.height as f32),
+                    );
+                    renderer.draw(data, &shader);
+                } else {
+                    //println!("cant get texture for {material}")
+                }
+            }
         }
 
         imgui_renderer.render(draw_data).unwrap();
@@ -194,29 +236,85 @@ fn main() {
     }
 }
 
-fn vertexdata_from_polyhedron(renderer: &Renderer, polyhedron: &BrushShape) -> VertexData {
-    let mut positions = vec![];
-    let mut normals = vec![];
-    for (info, face) in &polyhedron.faces {
-        let normal = glm::normalize(&glm::cross(
-            &(polyhedron.vertices[face[1]] - polyhedron.vertices[face[0]]),
-            &(polyhedron.vertices[face[2]] - polyhedron.vertices[face[0]]),
-        ));
-        for i in 2..face.len() {
-            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[0]]));
-            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i - 1]]));
-            positions.extend_from_slice(glm::value_ptr(&polyhedron.vertices[face[i]]));
-            normals.extend_from_slice(glm::value_ptr(&normal));
-            normals.extend_from_slice(glm::value_ptr(&normal));
-            normals.extend_from_slice(glm::value_ptr(&normal));
+fn get_vertexdatas(renderer: &Renderer, brushes: Vec<&BrushShape>) -> HashMap<String, VertexData> {
+    let mut data: HashMap<String, (Vec<f32>, Vec<f32>, Vec<f32>)> = HashMap::new(); // Positions, Normals, UVs
+    for brush in brushes {
+        for (info, face) in &brush.faces {
+            let info = info
+                .as_ref()
+                .expect("Invalid Brush: Face not clipped (Brush may be too big)");
+            if !data.contains_key(&info.material) {
+                data.insert(info.material.clone(), (vec![], vec![], vec![]));
+            }
+            let material_data = data
+                .get_mut(&info.material)
+                .expect("Has beem inserted before");
+
+            let normal = glm::normalize(&glm::cross(
+                &(brush.vertices[face[1]] - brush.vertices[face[0]]),
+                &(brush.vertices[face[2]] - brush.vertices[face[0]]),
+            ));
+            for i in 2..face.len() {
+                material_data
+                    .0
+                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[0]]));
+                material_data
+                    .0
+                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[i - 1]]));
+                material_data
+                    .0
+                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[i]]));
+                material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                material_data
+                    .2
+                    .extend_from_slice(glm::value_ptr(&get_uv_point(
+                        info,
+                        &brush.vertices[face[0]],
+                    )));
+                material_data
+                    .2
+                    .extend_from_slice(glm::value_ptr(&get_uv_point(
+                        info,
+                        &brush.vertices[face[i - 1]],
+                    )));
+                material_data
+                    .2
+                    .extend_from_slice(glm::value_ptr(&get_uv_point(
+                        info,
+                        &brush.vertices[face[i]],
+                    )));
+            }
         }
     }
-    let mut result = renderer::VertexData::create(renderer).unwrap();
-    result
-        .add_data(&positions, renderer::VertexSize::VEC3, 0)
-        .unwrap();
-    result
-        .add_data(&normals, renderer::VertexSize::VEC3, 1)
-        .unwrap();
-    result
+
+    let mut renderer_data = HashMap::new();
+    for (material, (positions, normals, uvs)) in data {
+        let mut vertex_data = VertexData::create(renderer).unwrap();
+        vertex_data
+            .add_data(&positions, renderer::VertexSize::VEC3, 0)
+            .unwrap();
+        vertex_data
+            .add_data(&normals, renderer::VertexSize::VEC3, 1)
+            .unwrap();
+        vertex_data
+            .add_data(&uvs, renderer::VertexSize::VEC2, 2)
+            .unwrap();
+        renderer_data.insert(material, vertex_data);
+    }
+
+    renderer_data
+}
+
+#[inline]
+fn get_uv_point(info: &Face, point: &glm::Vec3) -> glm::Vec2 {
+    glm::vec2(
+        (glm::dot(point, &info.uaxis.dir) / glm::dot(&info.uaxis.dir, &info.uaxis.dir))
+            / info.uaxis.scaling
+            + info.uaxis.translation,
+        (glm::dot(point, &info.vaxis.dir) / glm::dot(&info.vaxis.dir, &info.vaxis.dir))
+            / info.vaxis.scaling
+            + info.vaxis.translation,
+    )
 }
