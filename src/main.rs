@@ -31,7 +31,7 @@ fn main() {
     gl_attr.set_context_version(3, 3);
 
     let window = video_subsystem
-        .window("Window", 1280, 720)
+        .window("Screwdriver", 1280, 720)
         .position_centered()
         .opengl()
         .resizable()
@@ -115,6 +115,7 @@ fn main() {
     let camera_up = glm::vec3(0.0, 0.0, 1.0);
 
     let mut draw_tool = true;
+    let mut draw_missing = true;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main_loop: loop {
@@ -160,9 +161,10 @@ fn main() {
         imgui_platform.prepare_frame(&mut imgui, &window, &event_pump);
 
         let ui = imgui.new_frame();
-        ui.show_metrics_window(&mut true);
-        ui.window("Image").build(|| {
+        // ui.show_metrics_window(&mut true);
+        ui.window("View settings").build(|| {
             ui.checkbox("Draw Tool Textures", &mut draw_tool);
+            ui.checkbox("Draw missing Materials", &mut draw_missing);
             // imgui::Image::new(
             //     TextureId::new(texture.get_id() as usize),
             //     [texture.width as f32, texture.height as f32],
@@ -225,12 +227,14 @@ fn main() {
                         renderer.draw(data, &worldvertextransition);
                     }
                     Material::MissingMaterial => {
-                        lightmappedgeneric.set_uniform_texture("basetexture", &missing_texture, 0);
-                        lightmappedgeneric.set_uniform_vec2(
-                            "tex_size",
-                            &glm::vec2(16.0, 16.0),
-                        );
-                        renderer.draw(data, &lightmappedgeneric);
+                        if draw_missing {
+                            lightmappedgeneric.set_uniform_texture("basetexture", &missing_texture, 0);
+                            lightmappedgeneric.set_uniform_vec2(
+                                "tex_size",
+                                &glm::vec2(16.0, 16.0),
+                            );
+                            renderer.draw(data, &lightmappedgeneric);
+                        }
                     },
                 }
             }

@@ -15,9 +15,8 @@ Arrow Keys - Look around
 ## Missing Features
 - FGD/SmartEdit support
 - 2D views
-- Displacements
 - Transparent Textures
-- Entities
+- Entities (including brush entities)
 - The almighty carve tool
 - Every other inferior tool
 - Actually editing maps (This one might be important)
