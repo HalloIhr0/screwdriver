@@ -52,6 +52,38 @@ impl Texture {
         }
     }
 
+    /// data should be in RGBA8
+    pub fn create_from_data(renderer: &Renderer, width: u32, height: u32, data: &[u8]) -> Result<Self, String> {
+        let context = renderer.get_context();
+        unsafe {
+            let texture = context.create_texture()?;
+            context.bind_texture(glow::TEXTURE_2D, Some(texture));
+            context.texture_parameter_i32(texture, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
+            context.texture_parameter_i32(texture, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
+            context.texture_parameter_i32(texture, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+            context.texture_parameter_i32(texture, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+
+            context.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA8 as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                Some(&data),
+            );
+            context.generate_mipmap(glow::TEXTURE_2D);
+            Ok(Self {
+                context,
+                texture,
+                width,
+                height,
+            })
+        }
+    }
+
     pub(super) fn bind(&self) {
         unsafe {
             self.context

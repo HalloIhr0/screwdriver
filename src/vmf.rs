@@ -101,20 +101,24 @@ impl Face {
             z3
         )
         .ok()?;
+        let plane = (
+            glm::vec3(x1, y1, z1),
+            glm::vec3(x2, y2, z2),
+            glm::vec3(x3, y3, z3),
+        );
         Some(Self {
             id: kv.get("id")?.get_value()?.parse().ok()?,
-            plane: (
-                glm::vec3(x1, y1, z1),
-                glm::vec3(x2, y2, z2),
-                glm::vec3(x3, y3, z3),
-            ),
+            plane,
             material: kv.get("material")?.get_value()?.to_string(),
             uaxis: UVAxis::parse(kv.get("uaxis")?.get_value()?)?,
             vaxis: UVAxis::parse(kv.get("vaxis")?.get_value()?)?,
             lightmapscale: kv.get("lightmapscale")?.get_value()?.parse().ok()?,
             smoothing_groups: kv.get("smoothing_groups")?.get_value()?.parse().ok()?,
             dispinfo: match kv.get("dispinfo") {
-                Some(info) => Some(Dispinfo::parse(info)?),
+                Some(info) => Some(Dispinfo::parse(
+                    info,
+                    &glm::normalize(&glm::cross(&(plane.2 - plane.0), &(plane.1 - plane.0))),
+                )?),
                 None => None,
             },
         })
@@ -163,7 +167,7 @@ pub struct Dispinfo {
 }
 
 impl Dispinfo {
-    fn parse(kv: &KeyValues) -> Option<Self> {
+    fn parse(kv: &KeyValues, face_normal: &glm::Vec3) -> Option<Self> {
         let power = kv.get("power")?.get_value()?.parse::<u8>().ok()?;
         let startpos = {
             let mut x = 0.0;
@@ -172,6 +176,7 @@ impl Dispinfo {
             sscanf!(kv.get("startposition")?.get_value()?, "[{} {} {}]", x, y, z).ok()?;
             glm::vec3(x, y, z)
         };
+        let mut normals = get_dispdata_3(power, kv.get("normals")?)?;
         let mut distances = vec![];
         for row in 0..((1 << power) + 1) {
             let mut row_data = vec![];
@@ -213,12 +218,13 @@ impl Dispinfo {
             }
             alphas.push(row_data);
         }
+        normalize_normals(power, &mut normals, &mut distances, face_normal);
         Some(Self {
             power,
             startpos,
             elevation: kv.get("elevation")?.get_value()?.parse().ok()?,
             subdiv: kv.get("subdiv")?.get_value()? != "0",
-            normals: get_dispdata_3(power, kv.get("normals")?)?,
+            normals,
             distances,
             offsets,
             // offset_normals: get_dispdata_3(power, kv.get("offset_normals")?)?,
@@ -276,4 +282,24 @@ fn get_dispdata_3(power: u8, kv: &KeyValues) -> Option<Vec<Vec<glm::Vec3>>> {
         data.push(row_data);
     }
     Some(data)
+}
+
+fn normalize_normals(power: u8, normals: &mut Vec<Vec<glm::Vec3>>, distances: &mut Vec<Vec<f32>>, face_normal: &glm::Vec3) {
+    for row in 0..((1 << power) + 1) as usize {
+        for column in 0..((1 << power) + 1) as usize {
+            if normals[row][column].norm_squared() == 0.0 { // No normal set
+                normals[row][column] = *face_normal;
+                distances[row][column] = 0.0;
+            }
+            if glm::dot(&normals[row][column], face_normal) < 0.0 { // Displacement normal points inside the face
+                normals[row][column] *= -1.0;
+                distances[row][column] *= -1.0;
+            }
+            if normals[row][column].norm_squared() != 1.0 { // Not normalized
+                let lenght = normals[row][column].norm();
+                normals[row][column] /= lenght;
+                distances[row][column] *= lenght;
+            }
+        }
+    }
 }

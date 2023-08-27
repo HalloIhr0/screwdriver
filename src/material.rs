@@ -12,6 +12,7 @@ pub enum Material {
         basetexture: String,
         basetexture2: String,
     },
+    MissingMaterial,
 }
 
 impl Material {
@@ -51,6 +52,7 @@ impl Material {
                 basetexture,
                 basetexture2,
             } => vec![basetexture, basetexture2],
+            Material::MissingMaterial => vec![],
         }
     }
 
@@ -69,6 +71,7 @@ impl Material {
                 basetexture.to_lowercase().starts_with("tools/")
                     && basetexture2.to_lowercase().starts_with("tools/")
             }
+            Material::MissingMaterial => false,
         }
     }
 }

@@ -71,6 +71,17 @@ fn main() {
         }
     }
 
+    let missing_texture = Texture::create_from_data(&renderer, 8, 8, &[
+        0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255,
+        0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255,
+        0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255,
+        0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255,
+        255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
+        255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
+        255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
+        255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255,
+        ]).expect("Data is safe");
+
     let mut lightmappedgeneric = renderer::Shader::create(
         &renderer,
         include_str!("shaders/lightmappedgeneric-vert.glsl"),
@@ -213,6 +224,14 @@ fn main() {
                         );
                         renderer.draw(data, &worldvertextransition);
                     }
+                    Material::MissingMaterial => {
+                        lightmappedgeneric.set_uniform_texture("basetexture", &missing_texture, 0);
+                        lightmappedgeneric.set_uniform_vec2(
+                            "tex_size",
+                            &glm::vec2(16.0, 16.0),
+                        );
+                        renderer.draw(data, &lightmappedgeneric);
+                    },
                 }
             }
         }
@@ -306,43 +325,6 @@ fn get_vertexdatas(
                 let opposite_point = brush.vertices[face[(start_point + 2) % face.len()]];
                 let row_point = brush.vertices[face[(start_point + 3) % face.len()]];
                 let start_point = brush.vertices[face[start_point]];
-
-                // material_data.0.extend_from_slice(glm::value_ptr(&start_point));
-                // material_data.0.extend_from_slice(glm::value_ptr(&row_point));
-                // material_data.0.extend_from_slice(glm::value_ptr(&column_point));
-                // material_data.0.extend_from_slice(glm::value_ptr(&row_point));
-                // material_data.0.extend_from_slice(glm::value_ptr(&opposite_point));
-                // material_data.0.extend_from_slice(glm::value_ptr(&column_point));
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &start_point)));
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &row_point)));
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &column_point)));
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &row_point)));
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &opposite_point)));
-                // material_data
-                //     .2
-                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &column_point)));
-                // material_data.3.push(0.0);
-                // material_data.3.push(0.0);
-                // material_data.3.push(0.0);
-                // material_data.3.push(0.0);
-                // material_data.3.push(0.0);
-                // material_data.3.push(0.0);
 
                 for row in 0..(1 << dispinfo.power) {
                     for column in 0..(1 << dispinfo.power) {
@@ -444,28 +426,50 @@ fn get_vertexdatas(
             }
         }
     }
-
+    let mut missing_material_positions = vec![];
+    let mut missing_material_normals = vec![];
+    let mut missing_material_uvs = vec![];
+    let mut missing_material_alphas = vec![];
     let mut renderer_data = HashMap::new();
-    for (material, (positions, normals, uvs, alphas)) in data {
-        let mut vertex_data = VertexData::create(renderer).unwrap();
-        vertex_data
-            .add_data(&positions, renderer::VertexSize::VEC3, 0)
-            .unwrap();
-        vertex_data
-            .add_data(&normals, renderer::VertexSize::VEC3, 1)
-            .unwrap();
-        vertex_data
-            .add_data(&uvs, renderer::VertexSize::VEC2, 2)
-            .unwrap();
-        vertex_data
-            .add_data(&alphas, renderer::VertexSize::VEC1, 3)
-            .unwrap();
+    for (material, (mut positions, mut normals, mut uvs, mut alphas)) in data {
         if let Some(material) = Material::parse(gameinfo, &material) {
+            let mut vertex_data = VertexData::create(renderer).unwrap();
+            vertex_data
+                .add_data(&positions, renderer::VertexSize::VEC3, 0)
+                .unwrap();
+            vertex_data
+                .add_data(&normals, renderer::VertexSize::VEC3, 1)
+                .unwrap();
+            vertex_data
+                .add_data(&uvs, renderer::VertexSize::VEC2, 2)
+                .unwrap();
+            vertex_data
+                .add_data(&alphas, renderer::VertexSize::VEC1, 3)
+                .unwrap();
             renderer_data.insert(material, vertex_data);
         } else {
             eprintln!("material {material} not found");
+            missing_material_positions.append(&mut positions);
+            missing_material_normals.append(&mut normals);
+            missing_material_uvs.append(&mut uvs);
+            missing_material_alphas.append(&mut alphas);
         }
     }
+
+    let mut vertex_data = VertexData::create(renderer).unwrap();
+    vertex_data
+        .add_data(&missing_material_positions, renderer::VertexSize::VEC3, 0)
+        .unwrap();
+    vertex_data
+        .add_data(&missing_material_normals, renderer::VertexSize::VEC3, 1)
+        .unwrap();
+    vertex_data
+        .add_data(&missing_material_uvs, renderer::VertexSize::VEC2, 2)
+        .unwrap();
+    vertex_data
+        .add_data(&missing_material_alphas, renderer::VertexSize::VEC1, 3)
+        .unwrap();
+    renderer_data.insert(Material::MissingMaterial, vertex_data);
 
     renderer_data
 }
