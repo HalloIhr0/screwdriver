@@ -44,6 +44,7 @@ impl Shader {
     }
 
     pub fn set_uniform_vec2(&mut self, name: &str, value: &glm::Vec2) {
+        self.bind();
         let location = self.get_uniform_location(name);
         unsafe {
             self.context
@@ -52,6 +53,7 @@ impl Shader {
     }
 
     pub fn set_uniform_vec3(&mut self, name: &str, value: &glm::Vec3) {
+        self.bind();
         let location = self.get_uniform_location(name);
         unsafe {
             self.context
@@ -60,6 +62,7 @@ impl Shader {
     }
 
     pub fn set_uniform_mat3(&mut self, name: &str, value: &glm::Mat3) {
+        self.bind();
         let location = self.get_uniform_location(name);
         unsafe {
             self.context
@@ -68,6 +71,7 @@ impl Shader {
     }
 
     pub fn set_uniform_mat4(&mut self, name: &str, value: &glm::Mat4) {
+        self.bind();
         let location = self.get_uniform_location(name);
         unsafe {
             self.context
@@ -76,6 +80,7 @@ impl Shader {
     }
 
     pub fn set_uniform_texture(&mut self, name: &str, value: &Texture, slot: u8) {
+        self.bind();
         if slot > 16 {
             eprint!("Texture slot {} might not be supported", slot);
         }

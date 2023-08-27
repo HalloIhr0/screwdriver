@@ -17,7 +17,7 @@ pub struct VertexData {
     context: Rc<Context>,
     vao: NativeVertexArray,
     vbos: Vec<NativeBuffer>,
-    vertex_count: Option<i32>,
+    pub vertex_count: Option<i32>,
 }
 
 impl VertexData {

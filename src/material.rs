@@ -28,6 +28,14 @@ impl Material {
                 let basetexture = properties.get("$basetexture")?.get_value()?.to_lowercase();
                 Some(Self::UnlitGeneric { basetexture })
             }
+            "worldvertextransition" => {
+                let basetexture = properties.get("$basetexture")?.get_value()?.to_lowercase();
+                let basetexture2 = properties.get("$basetexture2")?.get_value()?.to_lowercase();
+                Some(Self::WorldVertexTransition {
+                    basetexture,
+                    basetexture2,
+                })
+            }
             x => {
                 eprintln!("Unknown shader {} in {}", x, name);
                 None
@@ -42,7 +50,7 @@ impl Material {
             Material::WorldVertexTransition {
                 basetexture,
                 basetexture2,
-            } => todo!(),
+            } => vec![basetexture, basetexture2],
         }
     }
 
@@ -57,7 +65,10 @@ impl Material {
             Material::WorldVertexTransition {
                 basetexture,
                 basetexture2,
-            } => todo!(),
+            } => {
+                basetexture.to_lowercase().starts_with("tools/")
+                    && basetexture2.to_lowercase().starts_with("tools/")
+            }
         }
     }
 }

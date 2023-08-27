@@ -48,24 +48,36 @@ impl Brush {
             shape: get_polyhedron(faces),
         })
     }
+
+    pub fn has_displacement(&self) -> bool {
+        for (face, _) in &self.shape.faces {
+            if let Some(face) = face {
+                if face.dispinfo.is_some() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 /// Represents a Face of a Brush
 /// In the VMF, this is called a "side"
 #[derive(Debug, Clone)]
 pub struct Face {
-    id: i32,
+    pub id: i32,
     plane: (glm::Vec3, glm::Vec3, glm::Vec3),
     pub material: String,
     pub uaxis: UVAxis,
     pub vaxis: UVAxis,
     lightmapscale: i32,
     smoothing_groups: i32,
-    dispinfo: Option<Dispinfo>,
+    pub dispinfo: Option<Dispinfo>,
 }
 
 impl Face {
     fn parse(kv: &KeyValues) -> Option<Self> {
+        //println!("{}", kv.get("id")?.get_value()?);
         let mut x1: f32 = 0.0;
         let mut y1: f32 = 0.0;
         let mut z1: f32 = 0.0;
@@ -101,7 +113,10 @@ impl Face {
             vaxis: UVAxis::parse(kv.get("vaxis")?.get_value()?)?,
             lightmapscale: kv.get("lightmapscale")?.get_value()?.parse().ok()?,
             smoothing_groups: kv.get("smoothing_groups")?.get_value()?.parse().ok()?,
-            dispinfo: None,
+            dispinfo: match kv.get("dispinfo") {
+                Some(info) => Some(Dispinfo::parse(info)?),
+                None => None,
+            },
         })
     }
 }
@@ -136,22 +151,80 @@ impl UVAxis {
 
 #[derive(Debug, Clone)]
 pub struct Dispinfo {
-    power: DispPower,
-    startpos: glm::Vec3,
-    elevation: f32,
-    subdiv: bool,
-    normals: Vec<Vec<glm::Vec3>>,
-    distances: Vec<Vec<f32>>,
-    offsets: Vec<Vec<glm::Vec3>>,
-    offset_normals: Vec<Vec<glm::Vec3>>,
-    alphas: Vec<Vec<u8>>,
+    pub power: u8,
+    pub startpos: glm::Vec3,
+    pub elevation: f32,
+    pub subdiv: bool,
+    pub normals: Vec<Vec<glm::Vec3>>,
+    pub distances: Vec<Vec<f32>>,
+    pub offsets: Vec<Vec<glm::Vec3>>,
+    // pub offset_normals: Vec<Vec<glm::Vec3>>,
+    pub alphas: Vec<Vec<u8>>,
 }
 
-#[derive(Debug, Clone)]
-enum DispPower {
-    Power2 = 2,
-    Power3 = 3,
-    Power4 = 4,
+impl Dispinfo {
+    fn parse(kv: &KeyValues) -> Option<Self> {
+        let power = kv.get("power")?.get_value()?.parse::<u8>().ok()?;
+        let startpos = {
+            let mut x = 0.0;
+            let mut y = 0.0;
+            let mut z = 0.0;
+            sscanf!(kv.get("startposition")?.get_value()?, "[{} {} {}]", x, y, z).ok()?;
+            glm::vec3(x, y, z)
+        };
+        let mut distances = vec![];
+        for row in 0..((1 << power) + 1) {
+            let mut row_data = vec![];
+            let mut values: Vec<f32> = vec![];
+            for value in kv
+                .get("distances")?
+                .get(&format!("row{}", row))?
+                .get_value()?
+                .split(' ')
+            {
+                values.push(value.parse().ok()?);
+            }
+            for column in 0..((1 << power) + 1) {
+                row_data.push(values[column as usize]);
+            }
+            distances.push(row_data);
+        }
+        let offsets =
+            (|| -> Option<Vec<Vec<glm::Vec3>>> { get_dispdata_3(power, kv.get("offsets")?) })()
+                .unwrap_or(vec![
+                    vec![glm::vec3(0.0, 0.0, 0.0); (1 << power) + 1];
+                    (1 << power) + 1
+                ]);
+        let mut alphas = vec![];
+        for row in 0..((1 << power) + 1) {
+            let mut row_data = vec![];
+            let mut values: Vec<u8> = vec![];
+            for value in kv
+                .get("alphas")?
+                .get(&format!("row{}", row))?
+                .get_value()?
+                .split(' ')
+            {
+                // Why can these be decimal values????
+                values.push(value.parse::<f32>().ok()? as u8);
+            }
+            for column in 0..((1 << power) + 1) {
+                row_data.push(values[column as usize]);
+            }
+            alphas.push(row_data);
+        }
+        Some(Self {
+            power,
+            startpos,
+            elevation: kv.get("elevation")?.get_value()?.parse().ok()?,
+            subdiv: kv.get("subdiv")?.get_value()? != "0",
+            normals: get_dispdata_3(power, kv.get("normals")?)?,
+            distances,
+            offsets,
+            // offset_normals: get_dispdata_3(power, kv.get("offset_normals")?)?,
+            alphas,
+        })
+    }
 }
 
 fn get_polyhedron(faces: Vec<Face>) -> BrushShape {
@@ -183,4 +256,24 @@ fn get_polyhedron(faces: Vec<Face>) -> BrushShape {
         math::clip_polyhedron_to_plane(&mut poly, &face.plane.0, &normal, Some(face.clone()));
     }
     poly
+}
+
+fn get_dispdata_3(power: u8, kv: &KeyValues) -> Option<Vec<Vec<glm::Vec3>>> {
+    let mut data = vec![];
+    for row in 0..((1 << power) + 1) {
+        let mut row_data = vec![];
+        let mut values: Vec<f32> = vec![];
+        for value in kv.get(&format!("row{}", row))?.get_value()?.split(' ') {
+            values.push(value.parse().ok()?);
+        }
+        for column in 0..((1 << power) + 1) {
+            row_data.push(glm::vec3(
+                values[(column * 3) as usize],
+                values[(column * 3 + 1) as usize],
+                values[(column * 3 + 2) as usize],
+            ));
+        }
+        data.push(row_data);
+    }
+    Some(data)
 }

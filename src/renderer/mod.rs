@@ -17,6 +17,17 @@ impl Renderer {
         unsafe {
             context.cull_face(glow::BACK);
             context.front_face(glow::CCW);
+            #[cfg(debug_assertions)]
+            {
+                context.enable(glow::DEBUG_OUTPUT);
+                context.debug_message_callback(
+                    |source: u32, message_type: u32, id: u32, severity: u32, message: &str| {
+                        if severity != glow::DEBUG_SEVERITY_NOTIFICATION {
+                            println!("{}", message)
+                        }
+                    },
+                );
+            }
         }
         Self { context }
     }

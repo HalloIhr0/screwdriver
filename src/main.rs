@@ -6,7 +6,7 @@ use renderer::{Renderer, Texture, VertexData};
 use screwdriver::{
     gameinfo::Gameinfo,
     material::Material,
-    vmf::{BrushShape, Face, VMF},
+    vmf::{Brush, Face, VMF},
 };
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
@@ -57,11 +57,7 @@ fn main() {
     let vtf = vtflib.new_vtf_file();
     let mut vtf = vtf.bind(&mut guard);
 
-    let vertex_data = get_vertexdatas(
-        &gameinfo,
-        &renderer,
-        vmf.worldbrushes.iter().map(|x| &x.shape).collect(),
-    );
+    let vertex_data = get_vertexdatas(&gameinfo, &renderer, &vmf.worldbrushes);
 
     let mut textures = HashMap::new();
     for material in vertex_data.keys() {
@@ -85,6 +81,13 @@ fn main() {
         &renderer,
         include_str!("shaders/unlitgeneric-vert.glsl"),
         include_str!("shaders/unlitgeneric-frag.glsl"),
+    )
+    .unwrap();
+
+    let mut worldvertextransition = renderer::Shader::create(
+        &renderer,
+        include_str!("shaders/worldvertextransition-vert.glsl"),
+        include_str!("shaders/worldvertextransition-frag.glsl"),
     )
     .unwrap();
 
@@ -171,6 +174,9 @@ fn main() {
         lightmappedgeneric.set_uniform_mat3("normal_transform", &normal_transform);
         unlitgeneric.set_uniform_mat4("projection", &proj);
         unlitgeneric.set_uniform_mat4("view", &view);
+        worldvertextransition.set_uniform_mat4("projection", &proj);
+        worldvertextransition.set_uniform_mat4("view", &view);
+        worldvertextransition.set_uniform_mat3("normal_transform", &normal_transform);
 
         for (material, data) in &vertex_data {
             if draw_tool || !material.is_tool() {
@@ -196,13 +202,22 @@ fn main() {
                     Material::WorldVertexTransition {
                         basetexture,
                         basetexture2,
-                    } => todo!(),
+                    } => {
+                        let texture = &textures[basetexture];
+                        let texture2 = &textures[basetexture2];
+                        worldvertextransition.set_uniform_texture("basetexture", texture, 0);
+                        worldvertextransition.set_uniform_texture("basetexture2", texture2, 1);
+                        worldvertextransition.set_uniform_vec2(
+                            "tex_size",
+                            &glm::vec2(texture.width as f32, texture.height as f32),
+                        );
+                        renderer.draw(data, &worldvertextransition);
+                    }
                 }
             }
         }
 
         imgui_renderer.render(draw_data).unwrap();
-
         window.gl_swap_window();
     }
 }
@@ -210,62 +225,228 @@ fn main() {
 fn get_vertexdatas(
     gameinfo: &Gameinfo,
     renderer: &Renderer,
-    brushes: Vec<&BrushShape>,
+    brushes: &Vec<Brush>,
 ) -> HashMap<Material, VertexData> {
-    let mut data: HashMap<String, (Vec<f32>, Vec<f32>, Vec<f32>)> = HashMap::new(); // Positions, Normals, UVs
+    let mut data: HashMap<String, (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> = HashMap::new(); // Positions, Normals, UVs, Alphas
     for brush in brushes {
-        for (info, face) in &brush.faces {
+        for (info, face) in &brush.shape.faces {
             let info = info
                 .as_ref()
                 .expect("Invalid Brush: Face not clipped (Brush may be too big)");
             if !data.contains_key(&info.material) {
-                data.insert(info.material.clone(), (vec![], vec![], vec![]));
+                data.insert(info.material.clone(), (vec![], vec![], vec![], vec![]));
             }
             let material_data = data
                 .get_mut(&info.material)
-                .expect("Has beem inserted before");
+                .expect("Has been inserted before");
+            if !brush.has_displacement() {
+                let brush = &brush.shape;
+                let normal = glm::normalize(&glm::cross(
+                    &(brush.vertices[face[1]] - brush.vertices[face[0]]),
+                    &(brush.vertices[face[2]] - brush.vertices[face[0]]),
+                ));
+                for i in 2..face.len() {
+                    material_data
+                        .0
+                        .extend_from_slice(glm::value_ptr(&brush.vertices[face[0]]));
+                    material_data
+                        .0
+                        .extend_from_slice(glm::value_ptr(&brush.vertices[face[i - 1]]));
+                    material_data
+                        .0
+                        .extend_from_slice(glm::value_ptr(&brush.vertices[face[i]]));
+                    material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                    material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                    material_data.1.extend_from_slice(glm::value_ptr(&normal));
+                    material_data
+                        .2
+                        .extend_from_slice(glm::value_ptr(&get_uv_point(
+                            info,
+                            &brush.vertices[face[0]],
+                        )));
+                    material_data
+                        .2
+                        .extend_from_slice(glm::value_ptr(&get_uv_point(
+                            info,
+                            &brush.vertices[face[i - 1]],
+                        )));
+                    material_data
+                        .2
+                        .extend_from_slice(glm::value_ptr(&get_uv_point(
+                            info,
+                            &brush.vertices[face[i]],
+                        )));
+                    material_data.3.push(0.0);
+                    material_data.3.push(0.0);
+                    material_data.3.push(0.0);
+                }
+            } else if let Some(dispinfo) = &info.dispinfo {
+                /* This code is a mess
+                s=start_point r=row_point o=opposite_point c=column_point
+                left->right = column
+                down->up = row
 
-            let normal = glm::normalize(&glm::cross(
-                &(brush.vertices[face[1]] - brush.vertices[face[0]]),
-                &(brush.vertices[face[2]] - brush.vertices[face[0]]),
-            ));
-            for i in 2..face.len() {
-                material_data
-                    .0
-                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[0]]));
-                material_data
-                    .0
-                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[i - 1]]));
-                material_data
-                    .0
-                    .extend_from_slice(glm::value_ptr(&brush.vertices[face[i]]));
-                material_data.1.extend_from_slice(glm::value_ptr(&normal));
-                material_data.1.extend_from_slice(glm::value_ptr(&normal));
-                material_data.1.extend_from_slice(glm::value_ptr(&normal));
-                material_data
-                    .2
-                    .extend_from_slice(glm::value_ptr(&get_uv_point(
-                        info,
-                        &brush.vertices[face[0]],
-                    )));
-                material_data
-                    .2
-                    .extend_from_slice(glm::value_ptr(&get_uv_point(
-                        info,
-                        &brush.vertices[face[i - 1]],
-                    )));
-                material_data
-                    .2
-                    .extend_from_slice(glm::value_ptr(&get_uv_point(
-                        info,
-                        &brush.vertices[face[i]],
-                    )));
+                r---o
+                |\  |
+                | \ |
+                |  \|
+                s---c
+
+                */
+                let brush = &brush.shape;
+                let start_point = face
+                    .iter()
+                    .position(|x| (brush.vertices[*x] - dispinfo.startpos).norm_squared() < 1.0)
+                    .expect(&format!(
+                        "A valid displacement should have this {}",
+                        info.id
+                    ));
+
+                let column_point = brush.vertices[face[(start_point + 1) % face.len()]];
+                let opposite_point = brush.vertices[face[(start_point + 2) % face.len()]];
+                let row_point = brush.vertices[face[(start_point + 3) % face.len()]];
+                let start_point = brush.vertices[face[start_point]];
+
+                // material_data.0.extend_from_slice(glm::value_ptr(&start_point));
+                // material_data.0.extend_from_slice(glm::value_ptr(&row_point));
+                // material_data.0.extend_from_slice(glm::value_ptr(&column_point));
+                // material_data.0.extend_from_slice(glm::value_ptr(&row_point));
+                // material_data.0.extend_from_slice(glm::value_ptr(&opposite_point));
+                // material_data.0.extend_from_slice(glm::value_ptr(&column_point));
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data.1.extend_from_slice(&[0.0, 0.0, 1.0]);
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &start_point)));
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &row_point)));
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &column_point)));
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &row_point)));
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &opposite_point)));
+                // material_data
+                //     .2
+                //     .extend_from_slice(glm::value_ptr(&get_uv_point(info, &column_point)));
+                // material_data.3.push(0.0);
+                // material_data.3.push(0.0);
+                // material_data.3.push(0.0);
+                // material_data.3.push(0.0);
+                // material_data.3.push(0.0);
+                // material_data.3.push(0.0);
+
+                for row in 0..(1 << dispinfo.power) {
+                    for column in 0..(1 << dispinfo.power) {
+                        let n1 = dispinfo.normals[row][column];
+                        let p1 = get_disp_point(
+                            row,
+                            column,
+                            dispinfo.power,
+                            &start_point,
+                            &row_point,
+                            &opposite_point,
+                            &column_point,
+                        ) + dispinfo.offsets[row][column]
+                            + n1 * (dispinfo.distances[row][column] + dispinfo.elevation);
+                        let n2 = dispinfo.normals[row + 1][column];
+                        let p2 = get_disp_point(
+                            row + 1,
+                            column,
+                            dispinfo.power,
+                            &start_point,
+                            &row_point,
+                            &opposite_point,
+                            &column_point,
+                        ) + dispinfo.offsets[row + 1][column]
+                            + n2 * (dispinfo.distances[row + 1][column] + dispinfo.elevation);
+                        let n3 = dispinfo.normals[row + 1][column + 1];
+                        let p3 = get_disp_point(
+                            row + 1,
+                            column + 1,
+                            dispinfo.power,
+                            &start_point,
+                            &row_point,
+                            &opposite_point,
+                            &column_point,
+                        ) + dispinfo.offsets[row + 1][column + 1]
+                            + n3 * (dispinfo.distances[row + 1][column + 1] + dispinfo.elevation);
+                        let n4 = dispinfo.normals[row][column + 1];
+                        let p4 = get_disp_point(
+                            row,
+                            column + 1,
+                            dispinfo.power,
+                            &start_point,
+                            &row_point,
+                            &opposite_point,
+                            &column_point,
+                        ) + dispinfo.offsets[row][column + 1]
+                            + n4 * (dispinfo.distances[row][column + 1] + dispinfo.elevation);
+                        // println!("{p1} {p2} {p3} {p4}");
+                        material_data.0.extend_from_slice(glm::value_ptr(&p1));
+                        material_data.0.extend_from_slice(glm::value_ptr(&p4));
+                        material_data.0.extend_from_slice(glm::value_ptr(&p2));
+                        material_data.0.extend_from_slice(glm::value_ptr(&p2));
+                        material_data.0.extend_from_slice(glm::value_ptr(&p4));
+                        material_data.0.extend_from_slice(glm::value_ptr(&p3));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n1));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n4));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n2));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n2));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n4));
+                        material_data.1.extend_from_slice(glm::value_ptr(&n3));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p1)));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p4)));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p2)));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p2)));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p4)));
+                        material_data
+                            .2
+                            .extend_from_slice(glm::value_ptr(&get_uv_point(info, &p3)));
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row][column] as f32 / 255.0);
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row][column + 1] as f32 / 255.0);
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row + 1][column] as f32 / 255.0);
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row + 1][column] as f32 / 255.0);
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row][column + 1] as f32 / 255.0);
+                        material_data
+                            .3
+                            .push(dispinfo.alphas[row + 1][column + 1] as f32 / 255.0);
+                    }
+                }
             }
         }
     }
 
     let mut renderer_data = HashMap::new();
-    for (material, (positions, normals, uvs)) in data {
+    for (material, (positions, normals, uvs, alphas)) in data {
         let mut vertex_data = VertexData::create(renderer).unwrap();
         vertex_data
             .add_data(&positions, renderer::VertexSize::VEC3, 0)
@@ -275,6 +456,9 @@ fn get_vertexdatas(
             .unwrap();
         vertex_data
             .add_data(&uvs, renderer::VertexSize::VEC2, 2)
+            .unwrap();
+        vertex_data
+            .add_data(&alphas, renderer::VertexSize::VEC1, 3)
             .unwrap();
         if let Some(material) = Material::parse(gameinfo, &material) {
             renderer_data.insert(material, vertex_data);
@@ -286,7 +470,6 @@ fn get_vertexdatas(
     renderer_data
 }
 
-#[inline]
 fn get_uv_point(info: &Face, point: &glm::Vec3) -> glm::Vec2 {
     glm::vec2(
         glm::dot(point, &info.uaxis.dir)
@@ -298,4 +481,20 @@ fn get_uv_point(info: &Face, point: &glm::Vec3) -> glm::Vec2 {
             / info.vaxis.scaling
             + info.vaxis.translation,
     )
+}
+
+fn get_disp_point(
+    row: usize,
+    column: usize,
+    power: u8,
+    start_point: &glm::Vec3,
+    row_point: &glm::Vec3,
+    opposite_point: &glm::Vec3,
+    column_point: &glm::Vec3,
+) -> glm::Vec3 {
+    let max_i = (1 << power) as f32;
+    //println!("{} {} {}", row as f32 / max_i, row as f32 / max_i, max_i);
+    let p1 = glm::lerp(start_point, row_point, row as f32 / max_i);
+    let p2 = glm::lerp(column_point, opposite_point, row as f32 / max_i);
+    glm::lerp(&p1, &p2, column as f32 / max_i)
 }

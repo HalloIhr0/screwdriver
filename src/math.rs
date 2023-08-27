@@ -93,7 +93,7 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
             .vertices
             .iter()
             // .position(|x| x == &new_vertex_one)
-            .position(|x| (x - &new_vertex_one).norm_squared() < 0.0001)
+            .position(|x| (x - new_vertex_one).norm_squared() < 0.0001)
         {
             Some(i) => i,
             None => {
@@ -117,7 +117,7 @@ pub fn clip_polyhedron_to_plane<T: Clone>(
         let new_vertex_two = match polyhedron
             .vertices
             .iter()
-            .position(|x| (x - &new_vertex_two).norm_squared() < 0.0001)
+            .position(|x| (x - new_vertex_two).norm_squared() < 0.0001)
         {
             Some(i) => i,
             None => {
