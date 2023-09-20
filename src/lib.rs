@@ -1,3 +1,4 @@
+pub mod fgd;
 pub mod gameinfo;
 pub mod keyvalue;
 pub mod material;

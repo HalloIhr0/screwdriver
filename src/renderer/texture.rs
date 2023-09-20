@@ -53,7 +53,12 @@ impl Texture {
     }
 
     /// data should be in RGBA8
-    pub fn create_from_data(renderer: &Renderer, width: u32, height: u32, data: &[u8]) -> Result<Self, String> {
+    pub fn create_from_data(
+        renderer: &Renderer,
+        width: u32,
+        height: u32,
+        data: &[u8],
+    ) -> Result<Self, String> {
         let context = renderer.get_context();
         unsafe {
             let texture = context.create_texture()?;
@@ -72,7 +77,7 @@ impl Texture {
                 0,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
-                Some(&data),
+                Some(data),
             );
             context.generate_mipmap(glow::TEXTURE_2D);
             Ok(Self {

@@ -284,18 +284,26 @@ fn get_dispdata_3(power: u8, kv: &KeyValues) -> Option<Vec<Vec<glm::Vec3>>> {
     Some(data)
 }
 
-fn normalize_normals(power: u8, normals: &mut Vec<Vec<glm::Vec3>>, distances: &mut Vec<Vec<f32>>, face_normal: &glm::Vec3) {
+fn normalize_normals(
+    power: u8,
+    normals: &mut [Vec<glm::Vec3>],
+    distances: &mut [Vec<f32>],
+    face_normal: &glm::Vec3,
+) {
     for row in 0..((1 << power) + 1) as usize {
         for column in 0..((1 << power) + 1) as usize {
-            if normals[row][column].norm_squared() == 0.0 { // No normal set
+            if normals[row][column].norm_squared() == 0.0 {
+                // No normal set
                 normals[row][column] = *face_normal;
                 distances[row][column] = 0.0;
             }
-            if glm::dot(&normals[row][column], face_normal) < 0.0 { // Displacement normal points inside the face
+            if glm::dot(&normals[row][column], face_normal) < 0.0 {
+                // Displacement normal points inside the face
                 normals[row][column] *= -1.0;
                 distances[row][column] *= -1.0;
             }
-            if normals[row][column].norm_squared() != 1.0 { // Not normalized
+            if normals[row][column].norm_squared() != 1.0 {
+                // Not normalized
                 let lenght = normals[row][column].norm();
                 normals[row][column] /= lenght;
                 distances[row][column] *= lenght;

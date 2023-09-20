@@ -79,14 +79,20 @@ impl Shader {
         }
     }
 
-    pub fn set_uniform_texture(&mut self, name: &str, value: &Texture, slot: u8) {
+    pub fn set_uniform_texture(&mut self, name: &str, value: &Texture, slot: u32) {
         self.bind();
-        if slot > 16 {
-            eprint!("Texture slot {} might not be supported", slot);
+        if slot
+            > unsafe {
+                self.context
+                    .get_parameter_i32(glow::MAX_COMBINED_TEXTURE_IMAGE_UNITS)
+            } as u32
+        {
+            eprint!("Texture slot {} is not supported", slot);
+            return;
         }
         let location = self.get_uniform_location(name);
         unsafe {
-            self.context.active_texture(glow::TEXTURE0 + slot as u32);
+            self.context.active_texture(glow::TEXTURE0 + slot);
             value.bind();
             self.context.uniform_1_i32(location.as_ref(), slot as i32);
         }

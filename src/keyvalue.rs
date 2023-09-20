@@ -1,5 +1,4 @@
 use std::{fs, io, iter::Peekable, path::Path, str::Chars};
-use thiserror::Error;
 
 use crate::gameinfo::Gameinfo;
 
@@ -12,7 +11,7 @@ pub enum KeyValues {
     List { subkeys: Vec<(String, KeyValues)> },
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub enum KeyValuesError {
     #[error("invalid escape sequence \\{0}")]
     InvalidEscape(char),
